@@ -16,10 +16,35 @@ JUNK_KEYWORDS = ["icon", "dummy", "meta", "symlink", "wrap", "material", "launch
 LOW_PRIORITY_KEYWORDS = ["extension", "plugin", "helper", "daemon", "patch", "theme"]
 
 def is_valid_package(name, desc):
+    """
+    Check if a package is valid by filtering out packages with junk keywords.
+    
+    Args:
+        name (str): The package name
+        desc (str): The package description (can be None)
+    
+    Returns:
+        bool: True if the package is valid (no junk keywords in description), False otherwise
+    """
     desc = (desc or "").lower()
     return not any(bad in desc for bad in JUNK_KEYWORDS)
 
 def get_top_matches(query, all_packages, limit=5):
+    """
+    Score and rank packages based on search query relevance.
+    
+    Uses a scoring algorithm that considers exact name matches, substring matches,
+    token prefix matches, and applies boosts/penalties based on keywords.
+    
+    Args:
+        query (str): The search query string
+        all_packages (list): List of tuples (name, description, source) representing packages
+        limit (int, optional): Maximum number of results to return. Defaults to 5.
+    
+    Returns:
+        list: List of top matching packages as tuples (name, description, source),
+              sorted by relevance score in descending order
+    """
     query = query.lower()
     query_tokens = set(query.split())
 
@@ -75,6 +100,27 @@ def get_top_matches(query, all_packages, limit=5):
     return top
 
 def main():
+    """
+    Main CLI function for the Arch Package Helper.
+    
+    Handles command-line argument parsing, searches for packages across multiple sources
+    (AUR, pacman, flatpak), displays results in a formatted table, and allows user
+    selection and installation of packages.
+    
+    The function performs the following steps:
+    1. Parse command-line arguments for the software query
+    2. Search across AUR, pacman, and flatpak repositories
+    3. Score and filter results to find top matches
+    4. Display results in an interactive table
+    5. Handle user selection and generate installation commands
+    6. Execute installation if confirmed by user
+    
+    Args:
+        None (uses sys.argv for command-line arguments)
+    
+    Returns:
+        None
+    """
     parser = argparse.ArgumentParser(description="Arch Package Helper CLI")
     parser.add_argument('query', type=str, nargs='+', help='Name of the software to search for')
     args = parser.parse_args()
