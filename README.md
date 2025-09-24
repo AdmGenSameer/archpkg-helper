@@ -139,16 +139,13 @@ Replace `<package-name>` with the package you want to manage.
 Top-level layout of this repository:
 ```
 archpkg-helper/
-├── archpkg/                  # Core Python package code (CLI and logic)
-├── install.sh                # One-command installer script (uses pipx)
-├── pyproject.toml            # Build/metadata configuration
-├── setup.py                  # Packaging configuration (entry points, deps)
-├── LICENSE                   # Project license (Apache 2.0)
-├── README.md                 # Project documentation (this file)
-├── build/                    # Build artifacts (may appear after builds)
-├── __pycache__/              # Python bytecode cache (auto-generated)
-├── archpkg_helper.egg-info/  # Packaging metadata (auto-generated)
-└── archpy.egg-info/          # Packaging metadata (auto-generated)
+├── src/
+│   └── archpkg/            # Core Python package code (CLI and logic)
+├── install.sh              # One-command installer script (uses pipx)
+├── pyproject.toml          # Build/metadata configuration
+├── setup.py                # Packaging configuration (entry points, deps)
+├── LICENSE                 # Project license (Apache 2.0)
+└── README.md               # Project documentation (this file)
 ```
 
 Some metadata/build directories are generated during packaging and may not be present in fresh clones.

@@ -1,5 +1,0 @@
-requests
-rich
-fuzzywuzzy
-python-Levenshtein
-distro

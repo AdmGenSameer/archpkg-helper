@@ -1,2 +1,0 @@
-[console_scripts]
-archpy = archpy.cli:app
