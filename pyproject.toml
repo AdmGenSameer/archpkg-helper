@@ -13,5 +13,13 @@ dependencies = [
   "distro"
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest"
+]
+
 [project.scripts]
 archpkg = "archpkg.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]

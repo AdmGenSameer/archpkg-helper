@@ -3,7 +3,8 @@ from setuptools import setup, find_packages
 setup(
     name='archpkg-helper',
     version='0.1.0',
-    packages=find_packages(),  # Automatically finds the archpkg/ folder
+    package_dir={'': 'src'},
+    packages=find_packages(where='src'),
     install_requires=[
         'requests',
         'rich',
@@ -21,7 +22,7 @@ setup(
     classifiers=[
         'Programming Language :: Python :: 3',
         'Operating System :: POSIX :: Linux',
-        'License :: OSI Approved :: MIT License',
+        'License :: OSI Approved :: Apache Software License',
         'Environment :: Console',
         'Intended Audience :: Developers',
         'Topic :: System :: Software Distribution'
