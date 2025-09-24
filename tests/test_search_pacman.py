@@ -22,5 +22,5 @@ def test_search_pacman_parsing(mock_check_output):
 
     # Verify the parsed results
     assert len(results) == 2
-    assert results[0] == ("pacman", "A library-based package manager with dependency support", "pacman")
-    assert results[1] == ("package-query", "Query ALPM and AUR databases", "pacman")
+    assert results[0] == ("pacman", "A library-based package manager with dependency support", "Pacman")
+    assert results[1] == ("package-query", "Query ALPM and AUR databases", "Pacman")
