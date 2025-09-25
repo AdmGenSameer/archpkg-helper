@@ -1,104 +1,72 @@
 # 📜 Code of Conduct
 
-## Our Pledge
+## 🌟 Quick Summary
+Welcome to **archpkg-helper**!  
+This is a friendly community where everyone should feel safe and respected.  
+👉 **If you see or face any issue, report it—we review all Code of Conduct reports within *24 hours* and aim to give initial feedback within *3 days*.**  
+The points below explain how we keep this space welcoming. 💚
 
-We as contributors, maintainers, and participants of the **archpkg-helper** project pledge to make participation in our community a harassment-free experience for everyone, regardless of:
+---
+## 🤝 Our Pledge
+We as contributors, maintainers, and participants of **archpkg-helper** pledge to make participation a **harassment-free and inclusive** experience for everyone, regardless of:  
+Age • Body size • Visible or invisible disability • Ethnicity • Sex characteristics • Gender identity & expression • Level of experience • Education • Socio-economic status • Nationality • Personal appearance • Race • Religion • Sexual identity & orientation.  
 
-- Age
-- Body size
-- Visible or invisible disability
-- Ethnicity
-- Sex characteristics
-- Gender identity and expression
-- Level of experience
-- Education
-- Socio-economic status
-- Nationality
-- Personal appearance
-- Race
-- Religion
-- Sexual identity and orientation
-
-We are committed to fostering an open, inclusive, and respectful environment.
+We’re committed to an **open, respectful, and positive environment** for all.
 
 ---
 
-## Our Standards
-
-Examples of behavior that contributes to a positive environment:
-
-✅ Using welcoming and inclusive language  
-✅ Being respectful of differing viewpoints and experiences  
-✅ Accepting constructive feedback graciously  
-✅ Focusing on what is best for the community  
-✅ Showing empathy toward other community members
-
-Examples of unacceptable behavior:
-
-🚫 Harassment, trolling, or abusive language  
-🚫 Discriminatory or derogatory comments  
-🚫 Public or private sexual harassment  
-🚫 Publishing others' private information without consent  
-🚫 Sustained disruptive behavior that disturbs the community
-
----
-## Our Responsibilities
-
-Project maintainers are responsible for:
-- Clarifying and enforcing a standards of acceptable behavior
-- Taking appropriate and fair corrective action in response to any behavior that they deem inappropriate, threatening, offensive, or harmful.
-
-They have the right and responsibility to **remove**, **edit**, or **reject comments**, commits, issues, pull requests, or other contributions that are not aligned with this Code of Conduct.
+## 🌱 Positive Behaviors
+Here’s how we can make this community awesome:
+- ✅ Use welcoming and inclusive language  
+- ✅ Respect different viewpoints and experiences  
+- ✅ Accept constructive feedback gracefully  
+- ✅ Focus on what benefits the community  
+- ✅ Show empathy and kindness toward others  
 
 ---
 
-## Scope
-
-This Code of Conduct applies within all project spaces, including:
-- GitHub repositories
-- Pull requests and issues
-- Discussions and comments
-- Community communication channels (e.g., Discord, Slack, etc.)
-
----
-## Enforcement
-
-If you witness or experience any behavior that violates this Code of Conduct, please report it by contacting the maintainers at:
-
-📧 **Contact Email**: [maintainer@example.com](to be updated by maintainers) 
-
-🛠️ You may also use GitHub’s built-in **report** feature if needed.
-
-All reports will be reviewed and investigated promptly and fairly. We are committed to protecting the privacy and safety of reporters.
+## 🚫 Unacceptable Behaviors
+The following are not okay:
+- 🚫 Harassment, trolling, or abusive language  
+- 🚫 Discriminatory or derogatory comments  
+- 🚫 Public or private sexual harassment  
+- 🚫 Sharing someone’s private info without consent  
+- 🚫 Repeated disruptive behavior  
 
 ---
-## Enforcement Guidelines
 
-Community leaders will follow these Community Impact Guidelines in determining the consequences for any action they deem in violation of this Code of Conduct:
+## 🛡️ Responsibilities
+Project maintainers will:
+- Clarify and enforce these standards  
+- Take fair action (warn, edit, or remove content) if any behavior is inappropriate, threatening, or harmful.
 
-### 1. Correction
+---
 
-**Community Impact**: Use of inappropriate language or other behavior deemed unprofessional or unwelcome in the community.
+## 🌍 Scope
+This Code applies everywhere related to the project, including:
+- GitHub repositories, pull requests, issues  
+- Discussions and comments  
+- Community channels (Discord, Slack, etc.)
 
-**Consequence**: A private, written warning from community leaders, providing clarity around the nature of the violation and an explanation of why the behavior was inappropriate. A public apology may be requested.
+---
 
-### 2. Warning
+## 📢 Reporting
+If you experience or witness a violation, please report it:  
+📧 **Contact Email:** [maintainer@example.com] (to be updated by maintainers)  
+🛠️ You can also use GitHub’s built-in report feature.  
 
-**Community Impact**: A violation through a single incident or series of actions.
+All reports will be reviewed **within 24 hours** and we aim to provide **initial feedback within 3 days**.  
+Your privacy and safety will be respected.
 
-**Consequence**: A warning with consequences for continued behavior. No interaction with the people involved, including unsolicited interaction with those enforcing the Code of Conduct, for a specified period of time. This includes avoiding interactions in community spaces as well as external channels like social media. Violating these terms may lead to a temporary or permanent ban.
+---
 
-### 3. Temporary Ban
+## ⚖️ Enforcement Guidelines
+Community leaders follow these steps depending on impact:
 
-**Community Impact**: A serious violation of community standards, including sustained inappropriate behavior.
-
-**Consequence**: A temporary ban from any sort of interaction or public communication with the community for a specified period of time. No public or private interaction with the people involved, including unsolicited interaction with those enforcing the Code of Conduct, is allowed during this period. Violating these terms may lead to a permanent ban.
-
-### 4. Permanent Ban
-
-**Community Impact**: Demonstrating a pattern of violation of community standards, including sustained inappropriate behavior, harassment of an individual, or aggression toward or disparagement of classes of individuals.
-
-**Consequence**: A permanent ban from any sort of public interaction within the community.
+1. **Correction** – Private warning, may request a public apology.  
+2. **Warning** – Formal warning with clear consequences.  
+3. **Temporary Ban** – Limited interaction period.  
+4. **Permanent Ban** – Removal from all community spaces.
 
 ---
 
