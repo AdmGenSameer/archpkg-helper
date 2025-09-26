@@ -3,6 +3,10 @@
 import subprocess
 
 def search_pacman(query):
+    """
+    Searches official Arch Linux repositories using the 'pacman -Ss' command.
+    Returns a list of (name, description, 'pacman') tuples, or an empty list on error.
+    """
     try:
         output = subprocess.check_output(["pacman", "-Ss", query], text=True)
     except subprocess.CalledProcessError:

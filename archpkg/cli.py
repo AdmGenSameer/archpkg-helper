@@ -8,6 +8,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import webbrowser
 from rich.console import Console
 from rich.table import Table
+import typer
+
+# --- Local Module Imports ---
+
 from search_aur import search_aur
 from search_pacman import search_pacman
 from search_flatpak import search_flatpak
@@ -16,7 +20,9 @@ from search_apt import search_apt
 from search_dnf import search_dnf
 from command_gen import generate_command
 
+
 console = Console()
+app = typer.Typer(help="Universal Package Helper CLI")
 
 try:
     import distro
@@ -29,7 +35,16 @@ LOW_PRIORITY_KEYWORDS = ["extension", "plugin", "helper", "daemon", "patch", "th
 
 SUPPORTED_PLATFORMS = ["arch", "debian", "ubuntu", "linuxmint", "fedora", "manjaro"]
 
+
+
+
 def detect_distro():
+    """
+    Detects the host Linux distribution and maps it to a supported family.
+    Returns:
+        str: The name of the distribution family ('arch', 'debian', 'fedora')
+             or 'unknown' if detection fails or the distro is not supported.
+    """
     try:
         dist = distro.id().lower().strip()
 
@@ -55,13 +70,38 @@ def detect_distro():
     except Exception as e:
         console.print(f"[red]⚠️ Failed to detect distro: {e}[/red]")
         return "unknown"
+    
+
+
 
 
 def is_valid_package(name, desc):
+    """
+    Filters out undesirable packages based on keywords in their description.
+    Args:
+        name (str): The name of the package (currently unused but kept for API consistency).
+        desc (str): The package's description.
+    Returns:
+        bool: True if the package is considered valid, False otherwise.
+    """
     desc = (desc or "").lower()
     return not any(bad in desc for bad in JUNK_KEYWORDS)
 
+
+
+
+
 def get_top_matches(query, all_packages, limit=5):
+    """
+    Scores packages for query relevance and returns a sorted list of top matches.
+
+    Args:
+        query (str): The user's search term.
+        all_packages (list): A list of all packages found from various sources.
+
+    Returns:
+        list: A sorted list containing the highest-scoring package tuples.
+    """
     query = query.lower()
     query_tokens = set(query.split())
 
@@ -124,11 +164,23 @@ def get_top_matches(query, all_packages, limit=5):
     top = [pkg for pkg, score in scored_results if score > 0][:limit]
     return top
 
+
+
+
 def github_fallback(query):
+    """
+    Opens a GitHub search in the browser when no local packages are found.
+
+    Args:
+        query (str): The search term to use on GitHub.
+    """
     console.print(f"[yellow]\n🔎 No packages found. Searching GitHub for '{query}'...[/yellow]")
     url = f"https://github.com/search?q={query.replace(' ', '+')}&type=repositories"
     console.print(f"[blue]🌐 Opening:[/blue] {url}")
     webbrowser.open(url)
+
+
+
 
 def main():
     parser = argparse.ArgumentParser(description="Universal Package Helper CLI")
@@ -195,6 +247,29 @@ def main():
 
 if __name__ == '__main__':
     try:
+        main()
+    except KeyboardInterrupt:
+        console.print("\n[red]❌ Cancelled with Ctrl+C.[/red]")
+        sys.exit(0)
+    except Exception as e:
+        console.print(f"[red]❌ An error occurred: {e}[/red]")
+        sys.exit(1)
+
+# Add Typer app command to match entry point in pyproject.toml
+@app.callback()
+def callback():
+    """Universal Package Helper CLI"""
+    pass
+
+@app.command()
+def search(query: str = typer.Argument(..., help="Name of the software to search for")):
+    """
+    Search for packages across multiple sources like pacman, aur, flatpak, etc.
+    """
+    try:
+        # Convert query to list format expected by main
+        args = query.split()
+        sys.argv = [sys.argv[0]] + args
         main()
     except KeyboardInterrupt:
         console.print("\n[red]❌ Cancelled with Ctrl+C.[/red]")
