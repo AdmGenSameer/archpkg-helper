@@ -1,311 +1,185 @@
-# Contributing to archpkg-helper
+# archpkg-helper
 
-Thank you for your interest in contributing to **archpkg-helper**! 🎉 
-
-We welcome contributions of all kinds - whether you're fixing bugs, adding features, improving documentation, or helping with testing. This guide will help you get started and ensure your contributions can be reviewed and merged efficiently.
+A cross-distro command-line utility that helps you search for packages and generate install commands for native package managers (pacman, AUR, apt, dnf, flatpak, snap). It aims to make discovering and installing software on Linux simpler, regardless of your distribution.
 
 ## Table of Contents
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Setup](#development-setup)
-- [Making Contributions](#making-contributions)
-- [Pull Request Process](#pull-request-process)
-- [Coding Standards](#coding-standards)
-- [Testing](#testing)
-- [Documentation](#documentation)
-- [Getting Help](#getting-help)
+- [About](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#about)
+- [Features](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#features)
+- [Quick Start (install.sh)](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#quick-start-installsh)
+- [Installation (Recommended: pipx)](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#installation-recommended-pipx)
+- [Alternative Installation (pip)](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#alternative-installation-pip)
+- [Usage](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#usage)
+- [File Structure](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#file-structure)
+- [Contributing](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#contributing)
+- [License](https://github.com/AdmGenSameer/archpkg-helper?tab=readme-ov-file#license)
 
-## Code of Conduct
+## About
 
-By participating in this project, you agree to abide by our Code of Conduct. Please be respectful, inclusive, and constructive in all interactions.
+archpkg-helper is designed to work across Linux distributions. While originally inspired by Arch Linux, it detects your system and generates appropriate install commands for common package managers. It's suitable for both newcomers and experienced users who want a simpler way to search and install packages.
 
-## Getting Started
+## Features
 
-### Prerequisites
+Search for packages and generate install commands for:
+- pacman (Arch), AUR, apt (Debian/Ubuntu), dnf (Fedora), flatpak, snap
+- Cross-distro support (not limited to Arch)
+- Clear, readable output and errors
+- One-command setup via install.sh
 
-- Python 3.6 or higher
-- Git
-- A GitHub account
+## Quick Start (install.sh)
 
-### First-Time Setup
+Install directly using the provided installer script.
 
-1. **Fork the repository**
-   - Visit the [archpkg-helper repository](https://github.com/AdmGenSameer/archpkg-helper)
-   - Click the "Fork" button to create your own copy
-
-2. **Clone your fork**
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/archpkg-helper.git
-   cd archpkg-helper
-   ```
-
-3. **Add upstream remote**
-   ```bash
-   git remote add upstream https://github.com/AdmGenSameer/archpkg-helper.git
-   ```
-
-4. **Verify your setup**
-   ```bash
-   git remote -v
-   # Should show both origin (your fork) and upstream (original repo)
-   ```
-
-## Development Setup
-
-### Environment Setup
-
-We recommend using `pipx` for development to avoid conflicts with system packages:
-
-1. **Install pipx** (if not already installed)
-   ```bash
-   # Arch Linux
-   sudo pacman -S pipx
-   pipx ensurepath
-
-   # Ubuntu/Debian
-   sudo apt install pipx
-   pipx ensurepath
-
-   # Fedora
-   sudo dnf install pipx
-   pipx ensurepath
-   ```
-
-2. **Install in development mode**
-   ```bash
-   # For development with editable installation
-   pipx install -e .
-   
-   # Or using pip in user mode
-   python3 -m pip install --user -e .
-   ```
-
-3. **Install system dependencies**
-   
-   Depending on your distribution:
-   
-   **Arch Linux/Manjaro:**
-   ```bash
-   # pacman is pre-installed
-   # Install AUR helper (optional but recommended for testing)
-   sudo pacman -S yay
-   # Install flatpak if needed
-   sudo pacman -S flatpak
-   ```
-   
-   **Ubuntu/Debian:**
-   ```bash
-   sudo apt update
-   sudo apt install flatpak
-   ```
-   
-   **Fedora:**
-   ```bash
-   sudo dnf install flatpak
-   ```
-
-4. **Verify installation**
-   ```bash
-   archpkg --version
-   archpkg --help
-   ```
-
-### Keeping Your Fork Updated
-
-Regularly sync your fork with the upstream repository:
+From a cloned repository:
 
 ```bash
-git fetch upstream
-git checkout main
-git merge upstream/main
-git push origin main
+git clone https://github.com/AdmGenSameer/archpkg-helper.git
+cd archpkg-helper
+bash install.sh
 ```
 
-## Making Contributions
-
-### Types of Contributions
-
-We welcome various types of contributions:
-
-- **Bug fixes** - Fix issues or unexpected behavior
-- **Feature additions** - Add new functionality
-- **Documentation** - Improve README, add examples, or API docs
-- **Testing** - Add or improve test coverage
-- **Performance** - Optimize existing functionality
-- **Refactoring** - Improve code structure without changing functionality
-
-### Before You Start
-
-1. **Check existing issues** - Look for related issues or feature requests
-2. **Create an issue** - For significant changes, create an issue first to discuss your approach
-3. **Start small** - Consider starting with small contributions to get familiar with the codebase
-
-### Branching Strategy
-
-Create a new branch for each contribution:
+Or run directly from the web:
 
 ```bash
-git checkout main
-git pull upstream main
-git checkout -b your-branch-name
+curl -fsSL https://raw.githubusercontent.com/AdmGenSameer/archpkg-helper/main/install.sh | bash
+# or
+wget -qO- https://raw.githubusercontent.com/AdmGenSameer/archpkg-helper/main/install.sh | bash
 ```
 
-**Branch naming conventions:**
-- `feat/description` - New features
-- `fix/description` - Bug fixes  
-- `docs/description` - Documentation changes
-- `refactor/description` - Code refactoring
-- `test/description` - Test additions/improvements
-- `chore/description` - Maintenance tasks
+Notes:
 
-## Pull Request Process
+- The installer ensures Python, pip, and pipx are available and installs the CLI via pipx.
+- You may be prompted for sudo to install prerequisites on your distro.
 
-### Before Submitting
+## Installation (Recommended: pipx)
 
-1. **Test your changes** - Ensure your code works as expected
-2. **Update documentation** - Update README.md or relevant docs if needed
-3. **Check code style** - Follow the coding standards (see below)
-4. **Write meaningful commits** - Use clear, descriptive commit messages
+On Arch and many other distros, system Python may be "externally managed" (PEP 668), which prevents global pip installs. pipx installs Python CLIs into isolated environments and puts their executables on your PATH—this is the easiest, safest method.
 
-### Commit Message Guidelines
+### Install pipx
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/) format:
-
-```
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
+Arch Linux:
+```bash
+sudo pacman -S pipx
+pipx ensurepath
 ```
 
-**Types:**
-- `feat:` - New feature
-- `fix:` - Bug fix
-- `docs:` - Documentation only changes
-- `style:` - Code style changes (formatting, semicolons, etc.)
-- `refactor:` - Code changes that neither fix bugs nor add features
-- `test:` - Adding or modifying tests
-- `chore:` - Changes to build process or auxiliary tools
+Debian/Ubuntu:
+```bash
+sudo apt update
+sudo apt install pipx
+pipx ensurepath
+```
 
-### Submitting Your Pull Request
+Fedora:
+```bash
+sudo dnf install pipx
+pipx ensurepath
+```
 
-1. **Push your branch**
-   ```bash
-   git push origin your-branch-name
-   ```
+### Install archpkg-helper with pipx
 
-2. **Create Pull Request**
-   - Go to your fork on GitHub
-   - Click "New Pull Request"
-   - Select your branch
-   - Fill out the PR template with:
-     - Clear description of changes
-     - Link to related issues
-     - Testing details
-     - Screenshots (if applicable)
+Directly from GitHub:
+```bash
+pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git
+```
 
-3. **Respond to feedback**
-   - Address any review comments
-   - Make additional commits as needed
-   - Keep the conversation constructive
+From a local clone:
+```bash
+git clone https://github.com/AdmGenSameer/archpkg-helper.git
+cd archpkg-helper
+pipx install .
+```
 
-## Coding Standards
-
-### Python Style
-
-- Follow [PEP 8](https://peps.python.org/pep-0008/) Python style guide
-- Use meaningful variable and function names
-- Add docstrings to functions and classes
-- Keep functions focused and small when possible
-
-### Code Organization
-
-- Place new package managers in appropriate modules
-- Follow the existing project structure
-- Import statements should be organized (standard library, third-party, local)
-
-### Error Handling
-
-- Use appropriate exception handling
-- Provide clear error messages to users
-- Log errors appropriately for debugging
-
-## Testing
-
-### Running Tests
+Upgrade later with:
 
 ```bash
-# Install test dependencies
-pip install -e .[test]
-
-# Run tests
-python -m pytest
-
-# Run with coverage
-python -m pytest --cov=archpkg
+pipx upgrade archpkg-helper
 ```
 
-### Writing Tests
+Ensure your shell session has pipx's bin path in PATH (pipx prints instructions after pipx ensurepath, typically ~/.local/bin).
 
-- Add tests for new features and bug fixes
-- Use descriptive test names
-- Test edge cases and error conditions
-- Place tests in the `tests/` directory
+## Alternative Installation (pip)
 
-### Manual Testing
+If you prefer pip, install in user scope to avoid system conflicts:
 
-Test your changes across different scenarios:
-- Different Linux distributions (if possible)
-- Various package managers
-- Edge cases (empty queries, network issues, etc.)
+From a local clone:
+```bash
+git clone https://github.com/AdmGenSameer/archpkg-helper.git
+cd archpkg-helper
+python3 -m pip install --user .
+```
 
-## Documentation
+Directly from GitHub:
+```bash
+python3 -m pip install --user git+https://github.com/AdmGenSameer/archpkg-helper.git
+```
 
-### Updating Documentation
+If your distro enforces PEP 668 protections for global installs, you may see errors. You can bypass with:
 
-- Update README.md for user-facing changes
-- Add docstrings to new functions and classes
-- Update help text for new CLI options
-- Consider adding examples for complex features
+```bash
+python3 -m pip install --break-system-packages .
+```
 
-### Documentation Style
+However, using pipx is strongly recommended instead of breaking system protections.
 
-- Use clear, concise language
-- Include practical examples
-- Keep formatting consistent
-- Verify all links work
+## Usage
 
-## Getting Help
+After installation, the CLI is available as archpkg.
 
-### Communication Channels
+Examples:
 
-- **GitHub Issues** - Bug reports, feature requests
-- **GitHub Discussions** - Questions, ideas, general discussion
-- **Pull Request Comments** - Code review discussions
+```bash
+# Search for a package across supported sources
+archpkg search <package-name>
 
-### Questions and Support
+# Generate install command(s) for a package
+archpkg install <package-name>
 
-Don't hesitate to ask questions! We're here to help:
+# Generate removal command(s) for a package
+archpkg remove <package-name>
+```
 
-1. Check existing issues and discussions first
-2. Create a new issue for bugs or feature requests
-3. Start a discussion for questions or ideas
-4. Tag maintainers if you need specific guidance
+Additional:
 
-### Maintainer Response
+```bash
+archpkg --help
+archpkg --version
+```
 
-We aim to:
-- Acknowledge new issues within 48 hours
-- Review pull requests within a week
-- Provide constructive feedback
-- Help contributors through the process
+Replace <package-name> with the package you want to manage.
 
----
+## File Structure
 
-Thank you for contributing to archpkg-helper! Your efforts help make package management easier for Linux users everywhere. 
+Top-level layout of this repository:
 
-If you have any questions about this contributing guide or need help with your contribution, please don't hesitate to reach out through GitHub issues or discussions.
+```
+archpkg-helper/
+├── archpkg/                  # Core Python package code (CLI and logic)
+├── install.sh                # One-command installer script (uses pipx)
+├── pyproject.toml            # Build/metadata configuration
+├── setup.py                  # Packaging configuration (entry points, deps)
+├── LICENSE                   # Project license (Apache 2.0)
+├── README.md                 # Project documentation (this file)
+├── build/                    # Build artifacts (may appear after builds)
+├── __pycache__/              # Python bytecode cache (auto-generated)
+├── archpkg_helper.egg-info/  # Packaging metadata (auto-generated)
+└── archpy.egg-info/          # Packaging metadata (auto-generated)
+```
 
-Happy contributing! 🚀
+Some metadata/build directories are generated during packaging and may not be present in fresh clones.
+
+## Contributing
+
+Contributions are welcome! Please:
+
+- Fork the repository
+- Create a feature branch: git checkout -b feature-branch
+- Make your changes and commit: git commit -m "Describe your changes"
+- Push to your fork: git push origin feature-branch
+- Open a Pull Request
+
+Report bugs or request features via the [issue tracker](https://github.com/AdmGenSameer/archpkg-helper/issues).
+
+## License
+
+This project is licensed under the [Apache License 2.0](https://github.com/AdmGenSameer/archpkg-helper/blob/main/LICENSE).
