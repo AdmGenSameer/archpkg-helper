@@ -283,7 +283,7 @@ Report bugs or request features via the [issue tracker](https://github.com/AdmGe
 ##  Contributors
 Thanks to all the amazing people who have contributed to this project:
 
-[![Contributors]("https://contrib.rocks/image?repo=AdmGenSameer/archpkg-helper)](https://github.com/AdmGenSameer/archpkg-helper/graphs/contributors)
+[![Contributors](https://contrib.rocks/image?repo=AdmGenSameer/archpkg-helper)](https://github.com/AdmGenSameer/archpkg-helper/graphs/contributors)
 
 
 ## License
