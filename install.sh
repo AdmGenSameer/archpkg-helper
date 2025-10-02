@@ -1,87 +1,134 @@
 #!/bin/bash
+set -e  # Stop on any error
 
 echo "[*] Starting universal installation of ArchPkg CLI..."
 
-# Detect platform
+# -----------------------
+# Detect OS
+# -----------------------
 OS="$(uname -s)"
+ARCH="$(uname -m)"
+echo "[*] Detected OS: $OS"
+echo "[*] Detected Architecture: $ARCH"
 
 # -----------------------
-# Linux
+# Function to detect python
 # -----------------------
-if [[ "$OS" == "Linux" ]]; then
+detect_python() {
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_BIN=python3
+        PIP_BIN=pip3
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_BIN=python
+        PIP_BIN=pip
+    else
+        echo "[!] Python not found. Please install Python 3."
+        exit 1
+    fi
+    echo "[*] Using Python: $($PYTHON_BIN --version)"
+    echo "[*] Using Pip: $($PIP_BIN --version)"
+}
+
+# -----------------------
+# Linux Installer
+# -----------------------
+install_linux() {
     if [[ -f /etc/os-release ]]; then
         . /etc/os-release
-        distro=$ID
+        DISTRO=$ID
     else
         echo "[!] Cannot detect Linux distribution."
         exit 1
     fi
 
-    echo "[*] Detected Linux distro: $distro"
+    echo "[*] Detected Linux distro: $DISTRO"
 
-    case "$distro" in
-        arch)
-            echo "[*] Installing dependencies for Arch Linux..."
-            sudo pacman -Sy --needed --noconfirm python python-pip git
-            ;;
+    case "$DISTRO" in
         ubuntu|debian)
-            echo "[*] Installing dependencies for Ubuntu/Debian..."
-            sudo apt-get update
-            sudo apt-get install -y python3 python3-pip git
+            sudo apt update && sudo apt install -y git python3 python3-pip
             ;;
         fedora)
-            echo "[*] Installing dependencies for Fedora..."
-            sudo dnf install -y python3 python3-pip git
+            sudo dnf install -y git python3 python3-pip
             ;;
-        opensuse*|sles)
-            echo "[*] Installing dependencies for openSUSE/SLES..."
-            sudo zypper install -y python3 python3-pip git
-            ;;
-        alpine)
-            echo "[*] Installing dependencies for Alpine Linux..."
-            sudo apk add --no-cache python3 py3-pip git
+        arch)
+            sudo pacman -Syu --noconfirm git python python-pip
             ;;
         *)
-            echo "[!] Unsupported distro: $distro"
-            echo ">>> Please install python3, pip, and git manually."
-            exit 1
+            echo "[*] Unknown distro. Attempting generic package manager..."
+            if command -v apt >/dev/null 2>&1; then
+                sudo apt update && sudo apt install -y git python3 python3-pip
+            elif command -v dnf >/dev/null 2>&1; then
+                sudo dnf install -y git python3 python3-pip
+            elif command -v pacman >/dev/null 2>&1; then
+                sudo pacman -Syu --noconfirm git python python-pip
+            else
+                echo "[!] No supported package manager found. Install git and python manually."
+                exit 1
+            fi
             ;;
     esac
-fi
+}
 
 # -----------------------
-# macOS
+# macOS Installer
 # -----------------------
-if [[ "$OS" == "Darwin" ]]; then
-    echo "[*] Detected macOS"
-    if ! command -v brew &> /dev/null; then
-        echo "[!] Homebrew not found. Installing Homebrew..."
+install_macos() {
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "[*] Homebrew not found. Installing Homebrew..."
         /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     fi
-    brew install python3 git
-    echo "[*] Installing pip..."
-    python3 -m ensurepip --upgrade
-fi
+    brew install git python3
+}
 
 # -----------------------
-# Windows (Git Bash / WSL)
+# Windows Installer (Git Bash/WSL)
 # -----------------------
-if [[ "$OS" == "MINGW"* || "$OS" == "MSYS"* || "$OS" == "CYGWIN"* ]]; then
-    echo "[*] Detected Windows"
-    if command -v winget &> /dev/null; then
-        echo "[*] Installing using winget..."
-        winget install -e --id Python.Python.3
-        winget install -e --id Git.Git
-    elif command -v choco &> /dev/null; then
-        echo "[*] Installing using Chocolatey..."
-        choco install -y python git
-    else
-        echo "[!] No package manager found. Please install Python3, pip, and Git manually from:"
-        echo "    - https://www.python.org/downloads/"
-        echo "    - https://git-scm.com/downloads"
-        exit 1
+install_windows() {
+    echo "[*] Windows detected. Make sure Git Bash or WSL is used."
+    if ! command -v git >/dev/null 2>&1; then
+        echo "[!] Git not found. Please install Git: https://git-scm.com/download/win"
     fi
-fi
+    if ! command -v python >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+        echo "[!] Python not found. Please install Python: https://www.python.org/downloads/windows/"
+    fi
+}
 
-echo "[*] Installation complete. You can now run ArchPkg CLI."
+# -----------------------
+# Run appropriate installer
+# -----------------------
+case "$OS" in
+    Linux)
+        install_linux
+        ;;
+    Darwin)
+        install_macos
+        ;;
+    MINGW*|MSYS*|CYGWIN*)
+        install_windows
+        ;;
+    *)
+        echo "[!] Unsupported OS: $OS"
+        exit 1
+        ;;
+esac
+
+# -----------------------
+# Detect Python and Pip
+# -----------------------
+detect_python
+
+# -----------------------
+# Python dependencies
+# -----------------------
+packages=("requests" "rich" "ty")  # Add more here
+for pkg in "${packages[@]}"; do
+    echo "[*] Installing Python package: $pkg"
+    if ! $PIP_BIN install "$pkg"; then
+        echo "[!] Failed to install $pkg from PyPI."
+        echo "    You can try installing it manually from GitHub if available:"
+        echo "    pip install git+https://github.com/<username>/$pkg.git"
+    fi
+done
+
+echo "[*] ArchPkg CLI installation completed successfully!"
 
