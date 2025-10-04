@@ -10,15 +10,20 @@ extra/package-query 1.9-2
     Query ALPM and AUR databases
 """
 
-@patch('subprocess.check_output')
-def test_search_pacman_parsing(mock_check_output):
+@patch('subprocess.run')
+def test_search_pacman_parsing(mock_run):
     """Test that the search_pacman function correctly parses pacman output."""
-    mock_check_output.return_value = PACMAN_OUTPUT
+    # Set up the mock to return a CompletedProcess-like object with stdout
+    mock_run.return_value = subprocess.CompletedProcess(
+        args=["pacman", "-Ss", "any_query"],
+        returncode=0,
+        stdout=PACMAN_OUTPUT
+    )
 
     results = search_pacman("any_query")
 
-    # Verify that subprocess.check_output was called correctly
-    mock_check_output.assert_called_with(["pacman", "-Ss", "any_query"], text=True)
+    # Verify that subprocess.run was called correctly
+    mock_run.assert_called_with(["pacman", "-Ss", "any_query"], text=True, capture_output=True)
 
     # Verify the parsed results
     assert len(results) == 2
