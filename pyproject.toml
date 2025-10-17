@@ -10,8 +10,12 @@ dependencies = [
   "requests",
   "rich",
   "typer[all]",
-  "distro"
+  "distro",
+  "flask"
 ]
+
+[project.optional-dependencies]
+github = ["GitPython"]
 
 [project.scripts]
 archpkg = "archpkg.cli:app"
