@@ -1,0 +1,72 @@
+#compdef archpkg
+# Zsh completion script for archpkg
+# Place this file in your fpath (e.g., ~/.zsh/completions/)
+
+_archpkg() {
+    local context="install"
+    local -a commands=(
+        'search:Search for packages by name'
+        'suggest:Get app suggestions based on purpose'
+        'complete:Generate completion suggestions'
+        'install:Install packages'
+        'remove:Remove packages'
+        'uninstall:Remove packages'
+        '--help:Show help information'
+        '--version:Show version information'
+        '--debug:Enable debug logging'
+        '--log-info:Show logging configuration'
+    )
+
+    local -a install_commands=(
+        'install:Install packages'
+        'add:Install packages'
+        'get:Install packages'
+    )
+
+    local -a remove_commands=(
+        'remove:Remove packages'
+        'uninstall:Remove packages'
+        'rm:Remove packages'
+    )
+
+    local -a search_commands=(
+        'search:Search for packages'
+        'find:Search for packages'
+        'lookup:Search for packages'
+    )
+
+    case $CURRENT in
+        1)
+            _describe 'commands' commands
+            ;;
+        2)
+            case $words[1] in
+                install|add|get)
+                    context="install"
+                    ;;
+                remove|uninstall|rm)
+                    context="remove"
+                    ;;
+                search|find|lookup)
+                    context="search"
+                    ;;
+            esac
+            ;;
+        *)
+            # Complete package names
+            local current_word="${words[CURRENT]}"
+            if [[ -n "$current_word" ]]; then
+                local completions
+                completions=$(archpkg complete "$current_word" --context "$context" 2>/dev/null)
+                if [[ -n "$completions" ]]; then
+                    local -a packages
+                    packages=(${(f)completions})
+                    _describe 'packages' packages
+                fi
+            fi
+            ;;
+    esac
+}
+
+# Register completion for archpkg and common aliases
+_archpkg "$@"

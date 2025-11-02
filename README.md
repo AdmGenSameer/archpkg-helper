@@ -34,8 +34,10 @@ archpkg-helper is designed to work across Linux distributions. While originally 
 
 ## Features
 
+- **Intelligent Autocomplete**: Smart inline suggestions for package names with trie-based search, alias mapping, and frequency-based ranking
 - **Purpose-based App Suggestions**: Get app recommendations based on what you want to do (e.g., "video editing", "office work", "programming")
 - **Intelligent Query Matching**: Natural language processing to understand user intent (e.g., "apps to edit videos" → video editing)
+- **Multi-shell Support**: Works seamlessly with bash, zsh, and fish shells
 - Search for packages and generate install commands for:
   - pacman (Arch), AUR, apt (Debian/Ubuntu), dnf (Fedora), flatpak, snap
 - Cross-distro support (not limited to Arch)
@@ -136,7 +138,36 @@ After installation, the CLI is available as `archpkg`.
 
 Here are some common commands for using the archpkg tool:
 
-#### 1. Purpose-based App Suggestions (NEW!)
+#### 1. Intelligent Autocomplete (NEW!)
+
+Get smart inline suggestions as you type:
+
+```sh
+# Type and press Tab for suggestions
+archpkg install vs<TAB>
+# Shows: visual-studio-code, vscodium, vscode-insiders
+
+archpkg install chr<TAB>
+# Shows: chromium, google-chrome
+
+# Abbreviation matching works too!
+archpkg install vsc<TAB>
+# Shows: visual-studio-code
+
+# Context-aware suggestions
+archpkg remove <TAB>  # Shows recently used packages first
+archpkg install <TAB> # Shows available packages
+```
+
+**Setup autocomplete:**
+```sh
+# Automatic setup for your shell
+./scripts/autocomplete/install_completion.sh
+
+# Or see docs/AUTOCOMPLETE.md for manual setup
+```
+
+#### 2. Purpose-based App Suggestions
 
 Get app recommendations based on what you want to do:
 
@@ -159,7 +190,7 @@ archpkg suggest "photo editing"
 archpkg suggest --list
 ```
 
-#### 2. Search for a Package
+#### 3. Search for a Package
 
 Search for a package across all supported package managers:
 
@@ -170,7 +201,7 @@ archpkg search firefox
 
 This command will search for the `firefox` package across multiple package managers (e.g., pacman, AUR, apt).
 
-#### 3. Install a Package
+#### 4. Install a Package
 
 Once you have identified a package, use the install command to generate the correct installation command for your system:
 
@@ -181,7 +212,7 @@ archpkg install firefox
 
 This will generate an appropriate installation command (e.g., `pacman -S firefox` for Arch-based systems).
 
-#### 4. Install a Package from AUR (Arch User Repository)
+#### 5. Install a Package from AUR (Arch User Repository)
 
 To install from the AUR specifically:
 
@@ -192,7 +223,7 @@ archpkg install vscode --source aur
 
 This installs `vscode` from the AUR.
 
-#### 5. Install a Package from Pacman
+#### 6. Install a Package from Pacman
 
 To install a package directly using pacman (e.g., on Arch Linux):
 
@@ -201,7 +232,7 @@ archpkg install firefox --source pacman
 ```
 
 
-#### 6. Remove a Package
+#### 7. Remove a Package
 
 To generate commands to remove a package:
 
@@ -320,10 +351,20 @@ archpkg-helper/
 ├── .github/                  # issue templates and pull request template
 ├── archpkg/                  # Core Python package code (CLI and logic)
 │   ├── suggest.py            # Purpose-based app suggestions module
+│   ├── completion.py         # Intelligent autocomplete backend
 │   ├── cli.py                # Main CLI interface
 │   └── ...                   # Other modules
 ├── data/                     # Data files for suggestions
 │   └── purpose_mapping.yaml  # Purpose-to-apps mapping (community-driven)
+├── scripts/                  # Utility scripts
+│   ├── autocomplete/         # Shell completion scripts
+│   │   ├── archpkg.bash      # Bash completion script
+│   │   ├── _archpkg          # Zsh completion script
+│   │   ├── archpkg.fish      # Fish completion script
+│   │   └── install_completion.sh  # Auto-installation script
+│   └── test_completion.py    # Test script for autocomplete
+├── docs/                     # Documentation
+│   └── AUTOCOMPLETE.md       # Detailed autocomplete documentation
 ├── install.sh                # One-command installer script (uses pipx)
 ├── pyproject.toml            # Build/metadata configuration
 ├── setup.py                  # Packaging configuration (entry points, deps)

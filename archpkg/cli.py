@@ -24,7 +24,11 @@ from archpkg.search_dnf import search_dnf
 from archpkg.command_gen import generate_command
 from archpkg.logging_config import get_logger, PackageHelperLogger
 from archpkg.suggest import suggest_apps, list_purposes
+ master
+from archpkg.completion import complete_packages
+
 from archpkg.cache import get_cache_manager, CacheConfig
+ main
 
 console = Console()
 logger = get_logger(__name__)
@@ -331,6 +335,12 @@ def main() -> None:
     suggest_parser.add_argument('purpose', type=str, nargs='*', help='Purpose or use case (e.g., "video editing", "office")')
     suggest_parser.add_argument('--list', action='store_true', help='List all available purposes')
     
+    # Completion command (as a subcommand)
+    completion_parser = subparsers.add_parser('complete', help='Generate completion suggestions (for shell integration)')
+    completion_parser.add_argument('query', type=str, nargs='*', help='Query to complete')
+    completion_parser.add_argument('--context', type=str, default='install', help='Completion context (install, remove, etc.)')
+    completion_parser.add_argument('--limit', type=int, default=10, help='Maximum number of suggestions')
+    
     # Global arguments
     parser.add_argument('--debug', action='store_true', help='Enable debug logging to console')
     parser.add_argument('--log-info', action='store_true', help='Show logging configuration and exit')
@@ -400,6 +410,9 @@ def main() -> None:
     if args.command == 'suggest':
         handle_suggest_command(args)
         return
+    elif args.command == 'complete':
+        handle_completion_command(args)
+        return
     elif args.command == 'search' or args.command is None:
         # Default to search behavior for backward compatibility
         handle_search_command(args, cache_manager)
@@ -416,6 +429,28 @@ def main() -> None:
             border_style="red"
         ))
         return
+
+
+def handle_completion_command(args) -> None:
+    """Handle the completion command for shell integration."""
+    if not args.query:
+        # Return empty completion if no query provided
+        return
+    
+    query = ' '.join(args.query)
+    logger.debug(f"Completion query: '{query}' with context: '{args.context}'")
+    
+    if not query.strip():
+        return
+    
+    # Get completions and output them
+    try:
+        completions = complete_packages(query, args.context, args.limit)
+        if completions:
+            print(completions)
+    except Exception as e:
+        logger.error(f"Completion failed: {e}")
+        # Don't output anything on error to avoid breaking shell completion
 
 
 def handle_suggest_command(args) -> None:
