@@ -3,6 +3,7 @@ README.md
 pyproject.toml
 setup.py
 archpkg/__init__.py
+archpkg/cache.py
 archpkg/cli.py
 archpkg/command_gen.py
 archpkg/config.py
@@ -14,6 +15,7 @@ archpkg/search_dnf.py
 archpkg/search_flatpak.py
 archpkg/search_pacman.py
 archpkg/search_snap.py
+archpkg/suggest.py
 archpkg.egg-info/PKG-INFO
 archpkg.egg-info/SOURCES.txt
 archpkg.egg-info/dependency_links.txt
