@@ -257,6 +257,79 @@ def github_fallback(query: str) -> None:
             border_style="red"
         ))
 
+def handle_upgrade_command() -> None:
+    """Handle the upgrade command to update archpkg from GitHub."""
+    logger.info("Starting archpkg upgrade process")
+    
+    console.print(Panel(
+        "[bold cyan]🔄 Upgrading archpkg from GitHub...[/bold cyan]\n\n"
+        "[dim]This will pull the latest code and reinstall archpkg.[/dim]",
+        title="Archpkg Upgrade",
+        border_style="cyan"
+    ))
+    
+    # Check if pipx is available
+    import shutil
+    if not shutil.which("pipx"):
+        logger.error("pipx command not found")
+        console.print(Panel(
+            "[red]❌ pipx is not installed or not in PATH.[/red]\n\n"
+            "[bold cyan]To install pipx:[/bold cyan]\n"
+            "- Arch Linux: [cyan]sudo pacman -S pipx && pipx ensurepath[/cyan]\n"
+            "- Debian/Ubuntu: [cyan]sudo apt install pipx && pipx ensurepath[/cyan]\n"
+            "- Fedora: [cyan]sudo dnf install pipx && pipx ensurepath[/cyan]\n\n"
+            "[bold yellow]Note:[/bold yellow] After installing pipx, restart your terminal.",
+            title="pipx Not Found",
+            border_style="red"
+        ))
+        return
+    
+    console.print("[blue]📥 Pulling latest changes from repository...[/blue]")
+    
+    # Run the upgrade command
+    upgrade_cmd = "pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git"
+    logger.info(f"Executing upgrade command: {upgrade_cmd}")
+    
+    try:
+        console.print("[blue]📦 Reinstalling with latest code...[/blue]\n")
+        exit_code = os.system(upgrade_cmd)
+        
+        if exit_code != 0:
+            logger.error(f"Upgrade failed with exit code: {exit_code}")
+            console.print(Panel(
+                f"[red]❌ Upgrade failed with exit code {exit_code}.[/red]\n\n"
+                "[bold cyan]Troubleshooting:[/bold cyan]\n"
+                "- Check your internet connection\n"
+                "- Ensure you can access GitHub (https://github.com)\n"
+                "- Try again in a few moments\n"
+                "- Check if pipx is working: [cyan]pipx list[/cyan]\n\n"
+                "[bold yellow]Manual upgrade:[/bold yellow]\n"
+                f"Run: [cyan]{upgrade_cmd}[/cyan]",
+                title="Upgrade Failed",
+                border_style="red"
+            ))
+        else:
+            logger.info("Successfully upgraded archpkg")
+            console.print(Panel(
+                "[bold green]✅ Successfully upgraded archpkg! You now have the latest features![/bold green]\n\n"
+                "[bold cyan]💡 Tip:[/bold cyan] Run [cyan]archpkg --help[/cyan] to see what's new!",
+                title="Upgrade Complete",
+                border_style="green"
+            ))
+    except Exception as e:
+        PackageHelperLogger.log_exception(logger, "Unexpected error during upgrade", e)
+        console.print(Panel(
+            f"[red]❌ An unexpected error occurred during upgrade.[/red]\n\n"
+            f"[bold]Error details:[/bold] {str(e)}\n\n"
+            "[bold cyan]What to do:[/bold cyan]\n"
+            "- Check your internet connection\n"
+            "- Ensure pipx is properly installed\n"
+            "- Try running manually: [cyan]pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git[/cyan]\n"
+            "- Report this issue if it persists",
+            title="Upgrade Error",
+            border_style="red"
+        ))
+
 def handle_search_errors(source_name: str, error: Exception) -> None:
     """Centralized error handling for search operations."""
     PackageHelperLogger.log_exception(logger, f"{source_name} search failed", error)
@@ -359,9 +432,8 @@ def main() -> None:
    --debug            Show detailed debug information
    --log-info         Show logging configuration
 
-🔄 UPDATE ARCHPKG
-   To get the latest features and fixes:
-   pipx upgrade archpkg
+🔄 UPGRADE ARCHPKG
+   archpkg upgrade    Upgrade archpkg tool from GitHub to get latest features
 
 🌍 Supports: Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora, openSUSE, and more!
 """
@@ -383,7 +455,7 @@ def main() -> None:
                 break
         
         # If we found a positional arg and it's not a known command, inject 'search'
-        if first_arg_idx < len(sys.argv) and sys.argv[first_arg_idx] not in ['search', 'suggest', '-h', '--help']:
+        if first_arg_idx < len(sys.argv) and sys.argv[first_arg_idx] not in ['search', 'suggest', 'upgrade', '-h', '--help']:
             sys.argv.insert(first_arg_idx, 'search')
     
     parser = argparse.ArgumentParser(
@@ -425,6 +497,13 @@ def main() -> None:
     )
     suggest_parser.add_argument('purpose', type=str, nargs='*', help='Purpose or use case (e.g., "video editing", "office")')
     suggest_parser.add_argument('--list', action='store_true', help='List all available purposes')
+    
+    # Upgrade command
+    upgrade_parser = subparsers.add_parser(
+        'upgrade',
+        help='Upgrade archpkg tool itself from GitHub',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     
     # Handle help manually to show custom format
     if '--help' in sys.argv or '-h' in sys.argv:
@@ -492,6 +571,9 @@ def main() -> None:
     if args.command == 'suggest':
         handle_suggest_command(args)
         return
+    elif args.command == 'upgrade':
+        handle_upgrade_command()
+        return
     elif args.command == 'search' or args.command is None:
         # Default to search behavior for backward compatibility
         handle_search_command(args, cache_manager)
@@ -503,6 +585,7 @@ def main() -> None:
             "- [cyan]archpkg search firefox[/cyan] - Search for packages by name\n"
             "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose\n"
             "- [cyan]archpkg suggest --list[/cyan] - List all available purposes\n"
+            "- [cyan]archpkg upgrade[/cyan] - Upgrade archpkg tool from GitHub\n"
             "- [cyan]archpkg --help[/cyan] - Show help information",
             title="Invalid Command",
             border_style="red"
