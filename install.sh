@@ -48,6 +48,9 @@ fi
 # ------------------------------
 if [ "$DISTRO" = "arch" ]; then
     DEPENDENCIES=(python python-pip git curl wget)
+elif [ "$DISTRO" = "opensuse" ]; then
+    # openSUSE includes venv in the base python3 package
+    DEPENDENCIES=(python3 python3-pip git curl wget)
 else
     DEPENDENCIES=(python3 python3-pip python3-venv git curl wget)
 fi
