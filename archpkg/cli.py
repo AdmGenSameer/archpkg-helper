@@ -317,27 +317,119 @@ def main() -> None:
 
     logger.info("Starting archpkg-helper CLI")
     
-    parser = argparse.ArgumentParser(description="Universal Package Helper CLI")
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    # Custom help message with emojis and comprehensive information
+    description = """🎯 ArchPkg Helper - Universal Package Manager for All Linux Distros
+
+📦 What does it do?
+   Searches and installs packages across multiple sources:
+   ✓ Official repos (pacman, apt, dnf, zypper)
+   ✓ AUR (Arch User Repository)
+   ✓ Flatpak & Snap (works on any distro)"""
+
+    epilog = """
+🔍 SEARCH FOR PACKAGES
+   archpkg search <package-name>
+   archpkg <package-name>             (search is default)
+   
+   Examples:
+   🔸 archpkg firefox
+   🔸 archpkg visual studio code
+   🔸 archpkg search telegram
+   
+   Flags:
+   --aur              Prefer AUR packages over official repos (Arch only)
+   --no-cache         Skip cache, search fresh results
+
+💡 GET APP SUGGESTIONS BY PURPOSE
+   archpkg suggest <purpose>
+   
+   Examples:
+   🔸 archpkg suggest video editing
+   🔸 archpkg suggest office
+   🔸 archpkg suggest programming
+   
+   --list             Show all available purposes
+
+⚙️ CACHE MANAGEMENT
+   --cache-stats      Show cache statistics
+   --clear-cache all  Clear all cached results
+   --clear-cache aur  Clear only AUR cache
+
+🔧 ADVANCED OPTIONS
+   --debug            Show detailed debug information
+   --log-info         Show logging configuration
+
+🔄 UPDATE ARCHPKG
+   To get the latest features and fixes:
+   pipx upgrade archpkg
+
+🌍 Supports: Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora, openSUSE, and more!
+"""
     
-    # Search command (default behavior)
-    search_parser = subparsers.add_parser('search', help='Search for packages by name')
-    search_parser.add_argument('query', type=str, nargs='*', help='Name of the software to search for')
-    search_parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
-    search_parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
+    # Handle backward compatibility: if first non-flag argument is not a known command, treat as search
+    # This allows "archpkg firefox" to work the same as "archpkg search firefox"
+    if len(sys.argv) > 1:
+        first_arg_idx = 1
+        # Skip over flags to find first positional argument
+        while first_arg_idx < len(sys.argv):
+            arg = sys.argv[first_arg_idx]
+            if arg.startswith('-'):
+                first_arg_idx += 1
+                # Skip flag value if it's an option that takes a value
+                if first_arg_idx < len(sys.argv) and arg in ['--clear-cache'] and not sys.argv[first_arg_idx].startswith('-'):
+                    first_arg_idx += 1
+            else:
+                # Found a positional argument
+                break
+        
+        # If we found a positional arg and it's not a known command, inject 'search'
+        if first_arg_idx < len(sys.argv) and sys.argv[first_arg_idx] not in ['search', 'suggest', '-h', '--help']:
+            sys.argv.insert(first_arg_idx, 'search')
     
-    # Suggest command
-    suggest_parser = subparsers.add_parser('suggest', help='Get app suggestions based on purpose')
-    suggest_parser.add_argument('purpose', type=str, nargs='*', help='Purpose or use case (e.g., "video editing", "office")')
-    suggest_parser.add_argument('--list', action='store_true', help='List all available purposes')
+    parser = argparse.ArgumentParser(
+        description=description,
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False  # We'll add custom help
+    )
     
-    # Global arguments
+    # Add custom help argument
+    parser.add_argument('-h', '--help', action='store_true', help='Show this help message')
+    
+    # Global arguments (must come before subparsers)
     parser.add_argument('--debug', action='store_true', help='Enable debug logging to console')
     parser.add_argument('--log-info', action='store_true', help='Show logging configuration and exit')
     parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
     parser.add_argument('--cache-stats', action='store_true', help='Show cache statistics and exit')
     parser.add_argument('--clear-cache', choices=['all', 'aur', 'pacman', 'apt', 'dnf', 'flatpak', 'snap'], 
                        help='Clear cache for specified source or all sources')
+    parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Search command (default behavior)
+    search_parser = subparsers.add_parser(
+        'search', 
+        help='Search for packages by name',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    search_parser.add_argument('query', type=str, nargs='*', help='Name of the software to search for')
+    search_parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
+    search_parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
+    
+    # Suggest command
+    suggest_parser = subparsers.add_parser(
+        'suggest', 
+        help='Get app suggestions based on purpose',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    suggest_parser.add_argument('purpose', type=str, nargs='*', help='Purpose or use case (e.g., "video editing", "office")')
+    suggest_parser.add_argument('--list', action='store_true', help='List all available purposes')
+    
+    # Handle help manually to show custom format
+    if '--help' in sys.argv or '-h' in sys.argv:
+        parser.print_help()
+        sys.exit(0)
     
     args = parser.parse_args()
     
