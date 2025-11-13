@@ -47,12 +47,13 @@ fi
 # Step 2: Define essential system dependencies
 # ------------------------------
 if [ "$DISTRO" = "arch" ]; then
-    DEPENDENCIES=(python python-pip git curl wget)
+    DEPENDENCIES=(python python-pip python-pipx git curl wget)
 elif [ "$DISTRO" = "opensuse" ]; then
     # openSUSE includes venv in the base python3 package
-    DEPENDENCIES=(python3 python3-pip git curl wget)
+    DEPENDENCIES=(python3 python3-pip python3-pipx git curl wget)
 else
-    DEPENDENCIES=(python3 python3-pip python3-venv git curl wget)
+    # For Fedora, Ubuntu/Debian and other distros
+    DEPENDENCIES=(python3 python3-pip python3-pipx python3-venv git curl wget)
 fi
 
 install_package() {
@@ -87,14 +88,14 @@ for pkg in "${DEPENDENCIES[@]}"; do
 done
 
 # ------------------------------
-# Step 5: Install pipx if missing
+# Step 5: Ensure pipx path is configured
 # ------------------------------
-if ! command -v pipx &> /dev/null; then
-    echo "[*] Installing pipx..."
-    python3 -m pip install --user pipx
-    python3 -m pipx ensurepath
+if command -v pipx &> /dev/null; then
+    echo "[*] pipx is installed. Ensuring PATH is configured..."
+    pipx ensurepath
 else
-    echo "[*] pipx is already installed."
+    echo "[!] pipx installation failed. Please install it manually for your distribution."
+    exit 1
 fi
 
 # ------------------------------
