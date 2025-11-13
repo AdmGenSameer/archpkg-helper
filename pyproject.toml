@@ -15,4 +15,4 @@ dependencies = [
 ]
 
 [project.scripts]
-archpkg = "archpkg.cli:app"
+archpkg = "archpkg.cli:main"
