@@ -29,6 +29,10 @@ if [ -f /etc/os-release ]; then
             DISTRO="ubuntu"
             echo "[*] Treating $ID as Ubuntu/Debian-based."
             ;;
+        opensuse|opensuse-tumbleweed|opensuse-leap|suse*)
+            DISTRO="opensuse"
+            echo "[*] Treating $ID as openSUSE-based."
+            ;;
         *)
             echo "[!] Unrecognized distro: $ID. Defaulting to Fedora (dnf)."
             DISTRO="fedora"
@@ -61,28 +65,8 @@ install_package() {
         arch)
             pacman -Qi "$PACKAGE" &> /dev/null || sudo pacman -S --noconfirm "$PACKAGE"
             ;;
-        *)
-            echo "[!] Unsupported Linux distro: $DISTRO"
-            exit 1
-            ;;
-    esac
-}
-
-# ------------------------------
-# Step 3: Define shared install function
-# ------------------------------
-install_package() {
-    PACKAGE=$1
-    echo "[*] Installing $PACKAGE if missing..."
-    case "$DISTRO" in
-        ubuntu|debian)
-            dpkg -s "$PACKAGE" &> /dev/null || sudo apt install -y "$PACKAGE"
-            ;;
-        fedora)
-            rpm -q "$PACKAGE" &> /dev/null || sudo dnf install -y "$PACKAGE"
-            ;;
-        arch)
-            pacman -Qi "$PACKAGE" &> /dev/null || sudo pacman -S --noconfirm "$PACKAGE"
+        opensuse)
+            rpm -q "$PACKAGE" &> /dev/null || sudo zypper install -y "$PACKAGE"
             ;;
         *)
             echo "[!] Unsupported Linux distro: $DISTRO"
