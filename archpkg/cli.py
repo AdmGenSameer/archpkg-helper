@@ -21,6 +21,7 @@ from archpkg.search_flatpak import search_flatpak
 from archpkg.search_snap import search_snap
 from archpkg.search_apt import search_apt
 from archpkg.search_dnf import search_dnf
+from archpkg.search_zypper import search_zypper
 from archpkg.command_gen import generate_command
 from archpkg.logging_config import get_logger, PackageHelperLogger
 from archpkg.suggest import suggest_apps, list_purposes
@@ -207,7 +208,7 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
 
         # Source priority (IMPROVED: consistent scoring)
         source_priority = {
-            "pacman": 40, "apt": 40, "dnf": 40,
+            "pacman": 40, "apt": 40, "dnf": 40, "zypper": 40,
             "aur": 20,
             "flatpak": 10,
             "snap": 5
@@ -364,6 +365,11 @@ def handle_search_errors(source_name: str, error: Exception) -> None:
             "not_found": "dnf command not found. Run on Fedora/RHEL-based system.",
             "cache_error": "DNF cache error. Try: sudo dnf clean all && sudo dnf makecache",
             "generic": "DNF search failed. Check DNF configuration or try clearing cache."
+        },
+        "zypper": {
+            "not_found": "zypper command not found. Run on openSUSE-based system.",
+            "cache_error": "Zypper cache error. Try: sudo zypper refresh",
+            "generic": "Zypper search failed. Check Zypper configuration or try refreshing cache."
         }
     }
     
@@ -473,7 +479,7 @@ def main() -> None:
     parser.add_argument('--log-info', action='store_true', help='Show logging configuration and exit')
     parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
     parser.add_argument('--cache-stats', action='store_true', help='Show cache statistics and exit')
-    parser.add_argument('--clear-cache', choices=['all', 'aur', 'pacman', 'apt', 'dnf', 'flatpak', 'snap'], 
+    parser.add_argument('--clear-cache', choices=['all', 'aur', 'pacman', 'apt', 'dnf', 'zypper', 'flatpak', 'snap'], 
                        help='Clear cache for specified source or all sources')
     parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
     
@@ -718,6 +724,18 @@ def handle_search_command(args, cache_manager) -> None:
         except Exception as e:
             handle_search_errors("dnf", e)
             search_errors.append("DNF")
+            
+    elif detected == "suse":
+        logger.info("Searching openSUSE-based repositories (Zypper)")
+        
+        try:
+            logger.debug("Starting Zypper search")
+            zypper_results = search_zypper(query, cache_manager if use_cache else None)
+            results.extend(zypper_results)
+            logger.info(f"Zypper search returned {len(zypper_results)} results")
+        except Exception as e:
+            handle_search_errors("zypper", e)
+            search_errors.append("Zypper")
 
     # Universal package managers
     logger.info("Searching universal package managers (Flatpak + Snap)")
