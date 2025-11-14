@@ -1,4 +1,5 @@
 #!/bin/bash
+# Note: set -e is used but we handle critical failures explicitly with fallbacks
 set -e
 
 # ------------------------------
@@ -51,8 +52,11 @@ if [ "$DISTRO" = "arch" ]; then
 elif [ "$DISTRO" = "opensuse" ]; then
     # openSUSE includes venv in the base python3 package
     DEPENDENCIES=(python3 python3-pip python3-pipx git curl wget)
+elif [ "$DISTRO" = "fedora" ]; then
+    # Fedora uses 'pipx' package name (not python3-pipx)
+    DEPENDENCIES=(python3 python3-pip pipx python3-venv git curl wget)
 else
-    # For Fedora, Ubuntu/Debian and other distros
+    # For Ubuntu/Debian and other distros
     DEPENDENCIES=(python3 python3-pip python3-pipx python3-venv git curl wget)
 fi
 
@@ -94,8 +98,49 @@ if command -v pipx &> /dev/null; then
     echo "[*] pipx is installed. Ensuring PATH is configured..."
     pipx ensurepath
 else
-    echo "[!] pipx installation failed. Please install it manually for your distribution."
-    exit 1
+    echo "[!] pipx not found after system package installation. Attempting fallback to pip install..."
+    
+    # Temporarily disable set -e to handle pip install failures gracefully
+    set +e
+    python3 -m pip install --user pipx
+    PIP_INSTALL_STATUS=$?
+    set -e
+    
+    # Check if pip install succeeded
+    if [ $PIP_INSTALL_STATUS -eq 0 ]; then
+        echo "[*] pipx installed successfully via pip. Ensuring PATH is configured..."
+        python3 -m pipx ensurepath
+        
+        # Add pipx to PATH for current session
+        export PATH="$HOME/.local/bin:$PATH"
+        
+        if command -v pipx &> /dev/null; then
+            echo "[✔] pipx is now available!"
+        else
+            echo "[!] pipx installed but not in PATH. You may need to restart your shell or run:"
+            echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
+            echo "    Then run this installer again."
+            exit 1
+        fi
+    else
+        echo ""
+        echo "[!] Failed to install pipx via both system package manager and pip."
+        echo ""
+        echo "Troubleshooting steps:"
+        if [ "$DISTRO" = "fedora" ]; then
+            echo "  For Fedora/RHEL-based systems:"
+            echo "    1. Try: sudo dnf install -y pipx"
+            echo "    2. If that fails, ensure EPEL or standard repos are enabled"
+            echo "    3. Or install manually: python3 -m pip install --user pipx"
+        else
+            echo "  1. Install pipx manually using your package manager"
+            echo "  2. Or run: python3 -m pip install --user pipx"
+        fi
+        echo "  3. Then run: pipx ensurepath"
+        echo "  4. Restart your shell and try this installer again"
+        echo ""
+        exit 1
+    fi
 fi
 
 # ------------------------------
