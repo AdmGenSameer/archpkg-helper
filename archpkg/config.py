@@ -7,6 +7,7 @@ TIMEOUTS = {
     'pacman': 30,
     'apt': 30,
     'dnf': 45,  # DNF can be slower
+    'zypper': 45,  # Zypper can be slower like DNF
     'flatpak': 30,
     'snap': 30,
     'command_check': 5
@@ -18,7 +19,7 @@ LOW_PRIORITY_KEYWORDS = ["extension", "plugin", "helper", "daemon", "patch", "th
 BOOST_KEYWORDS = ["editor", "browser", "ide", "official", "gui", "android", "studio", "stable", "canary", "beta"]
 
 # Supported platforms
-SUPPORTED_PLATFORMS = ["arch", "debian", "ubuntu", "linuxmint", "fedora", "manjaro"]
+SUPPORTED_PLATFORMS = ["arch", "debian", "ubuntu", "linuxmint", "fedora", "manjaro", "opensuse", "suse"]
 
 # Distribution mapping
 DISTRO_MAP = {
@@ -36,7 +37,12 @@ DISTRO_MAP = {
     "rhel": "fedora",
     "centos": "fedora", 
     "rocky": "fedora",
-    "alma": "fedora"
+    "alma": "fedora",
+    "opensuse": "suse",
+    "opensuse-leap": "suse",
+    "opensuse-tumbleweed": "suse",
+    "suse": "suse",
+    "sles": "suse"
 }
 
 # AUR helpers in order of preference

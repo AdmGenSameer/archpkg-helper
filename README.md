@@ -37,7 +37,7 @@ archpkg-helper is designed to work across Linux distributions. While originally 
 - **Purpose-based App Suggestions**: Get app recommendations based on what you want to do (e.g., "video editing", "office work", "programming")
 - **Intelligent Query Matching**: Natural language processing to understand user intent (e.g., "apps to edit videos" → video editing)
 - Search for packages and generate install commands for:
-  - pacman (Arch), AUR, apt (Debian/Ubuntu), dnf (Fedora), flatpak, snap
+  - pacman (Arch), AUR, apt (Debian/Ubuntu), dnf (Fedora), zypper (openSUSE), flatpak, snap
 - Cross-distro support (not limited to Arch)
 - Clear, readable output and errors
 - One-command setup via `install.sh`
@@ -83,6 +83,11 @@ On Arch and many other distros, system Python may be “externally managed” (P
 - Fedora:
   ```sh
   sudo dnf install pipx
+  pipx ensurepath
+  ```
+- openSUSE:
+  ```sh
+  sudo zypper install python3-pipx
   pipx ensurepath
   ```
 
@@ -224,6 +229,7 @@ You can specify the package manager source using the `--source` flag. Supported 
 - aur (AUR)
 - apt (Debian/Ubuntu)
 - dnf (Fedora)
+- zypper (openSUSE)
 - flatpak (Flatpak)
 - snap (Snap)
 
@@ -265,6 +271,7 @@ The tool is structured as a **modular Python CLI** with:
   - `aur` (Arch User Repository)  
   - `apt` (Debian/Ubuntu)  
   - `dnf` (Fedora)  
+  - `zypper` (openSUSE)  
   - `flatpak`  
   - `snap`
 
@@ -383,8 +390,8 @@ security:
 
 Here’s what’s planned for future releases of **archpkg-helper**:
 
-- 🔧 **Add support for `zypper` (openSUSE)**  
-  Extend backend adapters to cover openSUSE users.
+- ✅ **Add support for `zypper` (openSUSE)** - COMPLETED  
+  Extended backend adapters to cover openSUSE users.
 
 - ⚡ **Caching layer for faster searches**  
   Improve performance by reducing repeated lookups across package managers.
