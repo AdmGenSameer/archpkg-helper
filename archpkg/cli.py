@@ -226,6 +226,27 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
     
     return top
 
+def show_opensuse_brave_guidance() -> None:
+    """Show guidance for installing Brave browser on openSUSE."""
+    logger.info("Showing Brave browser installation guidance for openSUSE")
+    
+    console.print(Panel(
+        "[bold cyan]Brave Browser on openSUSE[/bold cyan]\n\n"
+        "[yellow]Brave requires adding an external repository.[/yellow]\n\n"
+        "[bold]Option 1: Add Brave Repository (Recommended)[/bold]\n"
+        "1. Import the repository key:\n"
+        "   [cyan]sudo rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc[/cyan]\n\n"
+        "2. Add the Brave repository:\n"
+        "   [cyan]sudo zypper addrepo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo[/cyan]\n\n"
+        "3. Install Brave:\n"
+        "   [cyan]sudo zypper install brave-browser[/cyan]\n\n"
+        "[bold]Option 2: Install via Flatpak[/bold]\n"
+        "   [cyan]flatpak install flathub com.brave.Browser[/cyan]\n\n"
+        "[dim]Note: After adding the repository, you can search for Brave again with archpkg.[/dim]",
+        title="🦁 Brave Browser Installation",
+        border_style="blue"
+    ))
+
 def github_fallback(query: str) -> None:
     """Provide GitHub search fallback with clear messaging."""
     logger.info(f"No packages found for query '{query}', providing GitHub fallback")
@@ -767,6 +788,9 @@ def handle_search_command(args, cache_manager) -> None:
 
     if not results:
         logger.info("No results found, providing GitHub fallback")
+        # Show special guidance for Brave browser on openSUSE
+        if detected == "suse" and "brave" in query.lower():
+            show_opensuse_brave_guidance()
         github_fallback(query)
         return
 
