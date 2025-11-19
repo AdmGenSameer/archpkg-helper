@@ -1,0 +1,4 @@
+requests
+rich
+typer[all]
+distro
