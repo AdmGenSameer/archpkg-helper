@@ -148,9 +148,10 @@ fi
 # ------------------------------
 if ! command -v archpkg &> /dev/null; then
     echo "[*] Installing ArchPkg CLI via pipx..."
-    pipx install .
+    pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git
 else
-    echo "[*] ArchPkg CLI is already installed. Use '--force' to reinstall."
+    echo "[*] ArchPkg CLI is already installed. Upgrading to latest version..."
+    pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git
 fi
 
 # ------------------------------
