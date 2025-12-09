@@ -583,9 +583,11 @@ def callback():
 
 @app.command()
 def search(
-    query: str = Argument(..., help="Name of the software to search for"),
+    query: List[str] = Argument(..., help="Name of the software to search for"),
     debug: bool = Option(False, "--debug", help="Enable debug logging"),
-    limit: int = Option(5, "--limit", "-l", help="Maximum number of results to show")
+    limit: int = Option(5, "--limit", "-l", help="Maximum number of results to show"),
+    aur: bool = Option(False, "--aur", help="Prefer AUR packages over Pacman"),
+    no_cache: bool = Option(False, "--no-cache", help="Bypass cache and perform fresh search")
 ) -> None:
     """
     Search for packages across all available package managers.
@@ -593,308 +595,38 @@ def search(
     if debug:
         PackageHelperLogger.set_debug_mode(True)
 
-    logger.info(f"Searching for: {query}")
+    # Join multi-word queries
+    query_str = ' '.join(query)
+    logger.info(f"Searching for: {query_str}")
 
-    if not query.strip():
+    if not query_str.strip():
         console.print("[red]Error: Empty search query[/red]")
         raise typer.Exit(1)
-    logger.info("Starting archpkg-helper CLI")
-    
-    # Custom help message with emojis and comprehensive information
-    description = """🎯 ArchPkg Helper - Universal Package Manager for All Linux Distros
 
-📦 What does it do?
-   Searches and installs packages across multiple sources:
-   ✓ Official repos (pacman, apt, dnf, zypper)
-   ✓ AUR (Arch User Repository)
-   ✓ Flatpak & Snap (works on any distro)"""
-
-    epilog = """
-🔍 SEARCH FOR PACKAGES
-   archpkg search <package-name>
-   archpkg <package-name>             (search is default)
-   
-   Examples:
-   🔸 archpkg firefox
-   🔸 archpkg visual studio code
-   🔸 archpkg search telegram
-   
-   Flags:
-   --aur              Prefer AUR packages over official repos (Arch only)
-   --no-cache         Skip cache, search fresh results
-
-💡 GET APP SUGGESTIONS BY PURPOSE
-   archpkg suggest <purpose>
-   
-   Examples:
-   🔸 archpkg suggest video editing
-   🔸 archpkg suggest office
-   🔸 archpkg suggest programming
-   
-   --list             Show all available purposes
-
-⚙️ CACHE MANAGEMENT
-   --cache-stats      Show cache statistics
-   --clear-cache all  Clear all cached results
-   --clear-cache aur  Clear only AUR cache
-
-🔧 ADVANCED OPTIONS
-   --debug            Show detailed debug information
-   --log-info         Show logging configuration
-
-🔄 UPGRADE ARCHPKG
-   archpkg upgrade    Upgrade archpkg tool from GitHub to get latest features
-
-🌍 Supports: Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora, openSUSE, and more!
-"""
-    
-    # Handle backward compatibility: if first non-flag argument is not a known command, treat as search
-    # This allows "archpkg firefox" to work the same as "archpkg search firefox"
-    if len(sys.argv) > 1:
-        first_arg_idx = 1
-        # Skip over flags to find first positional argument
-        while first_arg_idx < len(sys.argv):
-            arg = sys.argv[first_arg_idx]
-            if arg.startswith('-'):
-                first_arg_idx += 1
-                # Skip flag value if it's an option that takes a value
-                if first_arg_idx < len(sys.argv) and arg in ['--clear-cache'] and not sys.argv[first_arg_idx].startswith('-'):
-                    first_arg_idx += 1
-            else:
-                # Found a positional argument
-                break
-        
-        # If we found a positional arg and it's not a known command, inject 'search'
-        if first_arg_idx < len(sys.argv) and sys.argv[first_arg_idx] not in ['search', 'suggest', 'upgrade', '-h', '--help']:
-            sys.argv.insert(first_arg_idx, 'search')
-    
-    parser = argparse.ArgumentParser(
-        description=description,
-        epilog=epilog,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        add_help=False  # We'll add custom help
-    )
-    
-    # Add custom help argument
-    parser.add_argument('-h', '--help', action='store_true', help='Show this help message')
-    
-    # Global arguments (must come before subparsers)
-    parser.add_argument('--debug', action='store_true', help='Enable debug logging to console')
-    parser.add_argument('--log-info', action='store_true', help='Show logging configuration and exit')
-    parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
-    parser.add_argument('--cache-stats', action='store_true', help='Show cache statistics and exit')
-    parser.add_argument('--clear-cache', choices=['all', 'aur', 'pacman', 'apt', 'dnf', 'zypper', 'flatpak', 'snap'], 
-                       help='Clear cache for specified source or all sources')
-    parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
-    
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    
-    # Search command (default behavior)
-    search_parser = subparsers.add_parser(
-        'search', 
-        help='Search for packages by name',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    search_parser.add_argument('query', type=str, nargs='*', help='Name of the software to search for')
-    search_parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
-    search_parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
-    
-    # Suggest command
-    suggest_parser = subparsers.add_parser(
-        'suggest', 
-        help='Get app suggestions based on purpose',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    suggest_parser.add_argument('purpose', type=str, nargs='*', help='Purpose or use case (e.g., "video editing", "office")')
-    suggest_parser.add_argument('--list', action='store_true', help='List all available purposes')
-    
-    # Upgrade command
-    upgrade_parser = subparsers.add_parser(
-        'upgrade',
-        help='Upgrade archpkg tool itself from GitHub',
-        formatter_class=argparse.RawDescriptionHelpFormatter
-    )
-    
-    # Handle help manually to show custom format
-    if '--help' in sys.argv or '-h' in sys.argv:
-        parser.print_help()
-        sys.exit(0)
-    
-    args = parser.parse_args()
-    
     # Initialize cache manager
-    cache_config = CacheConfig(enabled=not args.no_cache)
+    cache_config = CacheConfig(enabled=not no_cache)
     cache_manager = get_cache_manager(cache_config)
-    
-    # Enable debug mode if requested
-    if args.debug:
-        PackageHelperLogger.set_debug_mode(True)
-        logger.info("Debug mode enabled via command line argument")
-    
-    # Handle cache-related commands
-    if args.cache_stats:
-        stats = cache_manager.get_stats()
-        console.print(Panel(
-            f"[bold cyan]Cache Statistics:[/bold cyan]\n"
-            f"Enabled: {'[green]Yes[/green]' if stats.get('enabled') else '[red]No[/red]'}\n"
-            f"Total entries: [yellow]{stats.get('total_entries', 0)}[/yellow]\n"
-            f"Valid entries: [green]{stats.get('valid_entries', 0)}[/green]\n"
-            f"Total accesses: [blue]{stats.get('total_accesses', 0)}[/blue]\n"
-            f"Average access count: [magenta]{stats.get('avg_access_count', 0)}[/magenta]\n"
-            f"Database path: [cyan]{stats.get('db_path', 'N/A')}[/cyan]\n"
-            f"TTL: [yellow]{stats.get('config', {}).get('ttl_seconds', 0)}s[/yellow]\n"
-            f"Max entries: [yellow]{stats.get('config', {}).get('max_entries', 0)}[/yellow]\n\n"
-            f"[bold]Source breakdown:[/bold]\n" + 
-            '\n'.join([f"  {source}: {count}" for source, count in stats.get('source_breakdown', {}).items()]),
-            title="Cache Statistics",
-            border_style="blue"
-        ))
-        return
-    
-    if args.clear_cache:
-        source = None if args.clear_cache == 'all' else args.clear_cache
-        cleared_count = cache_manager.clear(source)
-        target = args.clear_cache if args.clear_cache != 'all' else 'all sources'
-        console.print(Panel(
-            f"[green]Successfully cleared {cleared_count} cache entries for {target}.[/green]",
-            title="Cache Cleared",
-            border_style="green"
-        ))
-        return
-    
-    # Show logging info if requested
-    if args.log_info:
-        from archpkg.logging_config import get_log_info
-        log_info = get_log_info()
-        console.print(Panel(
-            f"[bold cyan]Logging Configuration:[/bold cyan]\n"
-            f"File logging: {'[green]Enabled[/green]' if log_info['file_logging_enabled'] else '[red]Disabled[/red]'}\n"
-            f"Log file: [cyan]{log_info['log_file'] or 'None'}[/cyan]\n"
-            f"Log level: [yellow]{logging.getLevelName(log_info['log_level'])}[/yellow]\n"
-            f"Active handlers: [blue]{log_info['handler_count']}[/blue]",
-            title="Logging Information",
-            border_style="blue"
-        ))
-        return
-    
-    # Handle different commands
-    if args.command == 'suggest':
-        handle_suggest_command(args)
-        return
-    elif args.command == 'upgrade':
-        handle_upgrade_command()
-        return
-    elif args.command == 'search' or args.command is None:
-        # Default to search behavior for backward compatibility
-        handle_search_command(args, cache_manager)
-        return
-    else:
-        console.print(Panel(
-            "[red]Unknown command.[/red]\n\n"
-            "[bold cyan]Available commands:[/bold cyan]\n"
-            "- [cyan]archpkg search firefox[/cyan] - Search for packages by name\n"
-            "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose\n"
-            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes\n"
-            "- [cyan]archpkg upgrade[/cyan] - Upgrade archpkg tool from GitHub\n"
-            "- [cyan]archpkg --help[/cyan] - Show help information",
-            title="Invalid Command",
-            border_style="red"
-        ))
-        return
 
-
-def handle_suggest_command(args) -> None:
-    """Handle the suggest command."""
-    if args.list:
-        logger.info("Listing all available purposes")
-        list_purposes()
-        return
-    
-    if not args.purpose:
-        console.print(Panel(
-            "[red]No purpose specified.[/red]\n\n"
-            "[bold cyan]Usage:[/bold cyan]\n"
-            "- [cyan]archpkg suggest video editing[/cyan] - Get video editing apps\n"
-            "- [cyan]archpkg suggest office[/cyan] - Get office applications\n"
-            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes\n"
-            "- [cyan]archpkg suggest --help[/cyan] - Show help information",
-            title="No Purpose Specified",
-            border_style="red"
-        ))
-        return
-    
-    purpose = ' '.join(args.purpose)
-    logger.info(f"Purpose suggestion query: '{purpose}'")
-    
-    if not purpose.strip():
-        logger.warning("Empty purpose query provided by user")
-        console.print(Panel(
-            "[red]Empty purpose query provided.[/red]\n\n"
-            "[bold cyan]Usage:[/bold cyan]\n"
-            "- [cyan]archpkg suggest video editing[/cyan] - Get video editing apps\n"
-            "- [cyan]archpkg suggest office[/cyan] - Get office applications\n"
-            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes",
-            title="Invalid Input",
-            border_style="red"
-        ))
-        return
-    
-    # Display suggestions
-    suggest_apps(purpose)
-
-
-def handle_search_command(args, cache_manager) -> None:
-    """Handle the search command (original functionality)."""
-    if not args.query:
-        console.print(Panel(
-            "[red]No search query provided.[/red]\n\n"
-            "[bold cyan]Usage:[/bold cyan]\n"
-            "- [cyan]archpkg search firefox[/cyan] - Search for Firefox\n"
-            "- [cyan]archpkg search visual studio code[/cyan] - Search for VS Code\n"
-            "- [cyan]archpkg search --aur firefox[/cyan] - Prefer AUR packages over Pacman\n"
-            "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose\n"
-            "- [cyan]archpkg --help[/cyan] - Show help information",
-            title="Invalid Input",
-            border_style="red"
-        ))
-        return
-    
-    query = ' '.join(args.query)
-    logger.info(f"Search query: '{query}'")
-
-    if not query.strip():
-        logger.warning("Empty search query provided by user")
-        console.print(Panel(
-            "[red]Empty search query provided.[/red]\n\n"
-            "[bold cyan]Usage:[/bold cyan]\n"
-            "- [cyan]archpkg search firefox[/cyan] - Search for Firefox\n"
-            "- [cyan]archpkg search visual studio code[/cyan] - Search for VS Code\n"
-            "- [cyan]archpkg search --aur firefox[/cyan] - Prefer AUR packages over Pacman\n"
-            "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose",
-            title="Invalid Input",
-            border_style="red"
-        ))
-        return
-
+    # Detect distribution and search
     detected = detect_distro()
-    console.print(f"\nSearching for '{query}' on [cyan]{detected}[/cyan] platform...\n")
+    console.print(f"\nSearching for '{query_str}' on [cyan]{detected}[/cyan] platform...\n")
 
     results = []
     search_errors = []
-    use_cache = not args.no_cache
+    use_cache = not no_cache
 
     # Search based on detected distribution
     if detected == "arch":
         try:
             logger.debug("Starting AUR search")
-            aur_results = search_aur(query, cache_manager if use_cache else None)
+            aur_results = search_aur(query_str, cache_manager if use_cache else None)
             results.extend(aur_results)
         except Exception as e:
             search_errors.append("AUR")
 
         try:
             logger.debug("Starting pacman search")
-            pacman_results = search_pacman(query, cache_manager if use_cache else None) 
+            pacman_results = search_pacman(query_str, cache_manager if use_cache else None) 
             results.extend(pacman_results)
         except Exception as e:
             search_errors.append("Pacman")
@@ -902,7 +634,7 @@ def handle_search_command(args, cache_manager) -> None:
     elif detected == "debian":
         try:
             logger.debug("Starting APT search")
-            apt_results = search_apt(query, cache_manager if use_cache else None)
+            apt_results = search_apt(query_str, cache_manager if use_cache else None)
             results.extend(apt_results)
         except Exception as e:
             search_errors.append("APT")
@@ -910,7 +642,7 @@ def handle_search_command(args, cache_manager) -> None:
     elif detected == "fedora":
         try:
             logger.debug("Starting DNF search")
-            dnf_results = search_dnf(query, cache_manager if use_cache else None)
+            dnf_results = search_dnf(query_str, cache_manager if use_cache else None)
             results.extend(dnf_results)
         except Exception as e:
             search_errors.append("DNF")
@@ -920,7 +652,7 @@ def handle_search_command(args, cache_manager) -> None:
         
         try:
             logger.debug("Starting Zypper search")
-            zypper_results = search_zypper(query, cache_manager if use_cache else None)
+            zypper_results = search_zypper(query_str, cache_manager if use_cache else None)
             results.extend(zypper_results)
             logger.info(f"Zypper search returned {len(zypper_results)} results")
         except Exception as e:
@@ -930,14 +662,14 @@ def handle_search_command(args, cache_manager) -> None:
     # Universal package managers
     try:
         logger.debug("Starting Flatpak search")
-        flatpak_results = search_flatpak(query, cache_manager if use_cache else None)
+        flatpak_results = search_flatpak(query_str, cache_manager if use_cache else None)
         results.extend(flatpak_results)
     except Exception:
         search_errors.append("Flatpak")
 
     try:
         logger.debug("Starting Snap search")
-        snap_results = search_snap(query, cache_manager if use_cache else None)
+        snap_results = search_snap(query_str, cache_manager if use_cache else None)
         results.extend(snap_results)
     except Exception:
         search_errors.append("Snap")
@@ -948,21 +680,22 @@ def handle_search_command(args, cache_manager) -> None:
     if not results:
         logger.info("No results found, providing GitHub fallback")
         # Show special guidance for Brave browser on openSUSE
-        if detected == "suse" and "brave" in query.lower():
+        if detected == "suse" and "brave" in query_str.lower():
             show_opensuse_brave_guidance()
-        github_fallback(query)
+        github_fallback(query_str)
         return
 
-    deduplicated_results = deduplicate_packages(results, prefer_aur=args.aur)
+    deduplicated_results = deduplicate_packages(results, prefer_aur=aur)
     logger.info(f"After deduplication: {len(deduplicated_results)} unique packages")
 
-    top_matches = get_top_matches(query, deduplicated_results, limit=5)
+    top_matches = get_top_matches(query_str, deduplicated_results, limit=limit)
     if not top_matches:
         console.print("[yellow]No close matches found.[/yellow]")
         raise typer.Exit(1)
 
-    # Display results
-    table = Table(title="Matching Packages")
+    # Display results with terminal width constraints
+    console_width = console.width if hasattr(console, 'width') else 120
+    table = Table(title="Matching Packages", width=min(console_width, 120), expand=False)
     table.add_column("Index", style="cyan", no_wrap=True)
     table.add_column("Package Name", style="green")
     table.add_column("Source", style="blue")
@@ -994,7 +727,8 @@ def handle_search_command(args, cache_manager) -> None:
                 "- Press Enter to cancel\n"
                 "- Use Ctrl+C to exit",
                 title="Invalid Input",
-                border_style="red"
+                border_style="red",
+                width=min(console_width - 4, 100)
             ))
             return
             
@@ -1006,7 +740,8 @@ def handle_search_command(args, cache_manager) -> None:
                 "- Try again with a valid number\n"
                 "- Press Enter to cancel",
                 title="Invalid Choice",
-                border_style="red"
+                border_style="red",
+                width=min(console_width - 4, 100)
             ))
             return
             
@@ -1040,6 +775,88 @@ def handle_search_command(args, cache_manager) -> None:
     except KeyboardInterrupt:
         console.print("\n[yellow]Installation cancelled.[/yellow]")
         raise typer.Exit(1)
+
+
+@app.command()
+def suggest(
+    purpose: Optional[List[str]] = Argument(None, help="Purpose or use case (e.g., 'video editing', 'office')"),
+    list_all: bool = Option(False, "--list", help="List all available purposes"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Get app suggestions based on purpose.
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    if list_all:
+        logger.info("Listing all available purposes")
+        list_purposes()
+        return
+    
+    if not purpose:
+        console.print(Panel(
+            "[red]No purpose specified.[/red]\n\n"
+            "[bold cyan]Usage:[/bold cyan]\n"
+            "- [cyan]archpkg suggest video editing[/cyan] - Get video editing apps\n"
+            "- [cyan]archpkg suggest office[/cyan] - Get office applications\n"
+            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes\n"
+            "- [cyan]archpkg suggest --help[/cyan] - Show help information",
+            title="No Purpose Specified",
+            border_style="red"
+        ))
+        raise typer.Exit(1)
+    
+    purpose_str = ' '.join(purpose)
+    logger.info(f"Purpose suggestion query: '{purpose_str}'")
+    
+    if not purpose_str.strip():
+        logger.warning("Empty purpose query provided by user")
+        console.print(Panel(
+            "[red]Empty purpose query provided.[/red]\n\n"
+            "[bold cyan]Usage:[/bold cyan]\n"
+            "- [cyan]archpkg suggest video editing[/cyan] - Get video editing apps\n"
+            "- [cyan]archpkg suggest office[/cyan] - Get office applications\n"
+            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes",
+            title="Invalid Input",
+            border_style="red"
+        ))
+        raise typer.Exit(1)
+    
+    # Display suggestions
+    suggest_apps(purpose_str)
+
+
+@app.command()
+def upgrade(
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Upgrade archpkg tool itself from GitHub.
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+    
+    logger.info("Starting archpkg upgrade from GitHub")
+    handle_upgrade_command()
+
+
+@app.command()
+def web(
+    port: int = Option(5000, "--port", "-p", help="Port to run the web server on"),
+    host: str = Option("127.0.0.1", "--host", help="Host to bind the web server to"),
+    debug_mode: bool = Option(False, "--debug", help="Enable debug mode")
+) -> None:
+    """
+    Launch the web interface for package management.
+    """
+    console.print(f"[blue]Starting web interface at http://{host}:{port}[/blue]")
+    console.print("[yellow]Press Ctrl+C to stop the server[/yellow]")
+    try:
+        web_app.run(host=host, port=port, debug=debug_mode)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Web server stopped.[/yellow]")
+
 
 @app.command()
 def update(
