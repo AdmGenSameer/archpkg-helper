@@ -880,7 +880,8 @@ def main() -> None:
                 break
         
         # If we found a positional arg and it's not a known command, inject 'search'
-        if first_arg_idx < len(sys.argv) and sys.argv[first_arg_idx] not in ['search', 'suggest', 'upgrade', '-h', '--help']:
+        known_commands = ['search', 'suggest', 'upgrade', 'install', 'update', 'config', 'list-installed', 'service', 'web', '-h', '--help']
+        if first_arg_idx < len(sys.argv) and sys.argv[first_arg_idx] not in known_commands:
             sys.argv.insert(first_arg_idx, 'search')
     
     parser = argparse.ArgumentParser(
