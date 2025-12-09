@@ -45,6 +45,31 @@ logger = get_logger(__name__)
 # Constants
 PANEL_PADDING = 4  # Padding for panel borders in terminal width calculations
 
+def normalize_query(query: str) -> List[str]:
+    """Generate query variations for better matching.
+    
+    Args:
+        query: Original search query
+        
+    Returns:
+        List of query variations to try
+    """
+    variations = [query]
+    
+    # Add hyphenated version: "jellyfin media player" -> "jellyfin-media-player"
+    if ' ' in query:
+        hyphenated = query.replace(' ', '-')
+        variations.append(hyphenated)
+        logger.debug(f"Added hyphenated variation: '{hyphenated}'")
+    
+    # Add concatenated version: "jellyfin media player" -> "jellyfinmediaplayer"
+    if ' ' in query:
+        concatenated = query.replace(' ', '')
+        variations.append(concatenated)
+        logger.debug(f"Added concatenated variation: '{concatenated}'")
+    
+    return variations
+
 # Create Typer app
 app = typer.Typer(
     name="archpkg",
@@ -577,10 +602,60 @@ def main() -> None:
 @app.callback()
 def callback():
     """
-    Universal package manager helper for Linux distributions.
+    🎯 ArchPkg Helper - Universal Package Manager for All Linux Distros
 
-    Search and install packages across multiple package managers:
-    pacman, AUR, apt, dnf, flatpak, snap
+    📦 What does it do?
+       Searches and installs packages across multiple sources:
+       ✓ Official repos (pacman, apt, dnf, zypper)
+       ✓ AUR (Arch User Repository)
+       ✓ Flatpak & Snap (works on any distro)
+
+    🔍 SEARCH FOR PACKAGES
+       archpkg search <package-name>
+       archpkg <package-name>             (search is default)
+       
+       Examples:
+       🔸 archpkg firefox
+       🔸 archpkg visual studio code
+       🔸 archpkg search telegram
+       
+       Options:
+       --aur              Prefer AUR packages over official repos
+       --no-cache         Skip cache, search fresh results
+       --limit, -l        Maximum results to show (default: 5)
+
+    💡 GET APP SUGGESTIONS BY PURPOSE
+       archpkg suggest <purpose>
+       
+       Examples:
+       🔸 archpkg suggest video editing
+       🔸 archpkg suggest coding
+       🔸 archpkg suggest gaming
+       
+       --list             Show all available purposes
+
+    🌐 WEB INTERFACE
+       archpkg web                        Launch web UI
+       archpkg web --port 8080            Use custom port
+
+    📦 PACKAGE TRACKING & UPDATES
+       archpkg list-installed             List tracked packages
+       archpkg update                     Install updates
+       archpkg update --check-only        Only check for updates
+
+    ⚙️ CONFIGURATION
+       archpkg config --list              Show all settings
+       archpkg config <key> <value>       Set a config value
+
+    🔄 BACKGROUND SERVICE
+       archpkg service start|stop|status
+
+    🔄 UPGRADE ARCHPKG
+       archpkg upgrade                    Get latest version from GitHub
+
+    🌍 SUPPORTED DISTRIBUTIONS
+       Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora,
+       openSUSE, + any distro with Flatpak/Snap support
     """
     pass
 
@@ -616,68 +691,86 @@ def search(
     detected = detect_distro()
     console.print(f"\nSearching for '{query_str}' on [cyan]{detected}[/cyan] platform...\n")
 
+    # Generate query variations for better matching
+    query_variations = normalize_query(query_str)
+    logger.info(f"Searching with {len(query_variations)} query variations: {query_variations}")
+
     results = []
     search_errors = []
     use_cache = not no_cache
 
-    # Search based on detected distribution
-    if detected == "arch":
-        try:
-            logger.debug("Starting AUR search")
-            aur_results = search_aur(query_str, cache_manager if use_cache else None)
-            results.extend(aur_results)
-        except Exception as e:
-            search_errors.append("AUR")
-
-        try:
-            logger.debug("Starting pacman search")
-            pacman_results = search_pacman(query_str, cache_manager if use_cache else None) 
-            results.extend(pacman_results)
-        except Exception as e:
-            search_errors.append("Pacman")
-
-    elif detected == "debian":
-        try:
-            logger.debug("Starting APT search")
-            apt_results = search_apt(query_str, cache_manager if use_cache else None)
-            results.extend(apt_results)
-        except Exception as e:
-            search_errors.append("APT")
-
-    elif detected == "fedora":
-        try:
-            logger.debug("Starting DNF search")
-            dnf_results = search_dnf(query_str, cache_manager if use_cache else None)
-            results.extend(dnf_results)
-        except Exception as e:
-            search_errors.append("DNF")
-            
-    elif detected == "suse":
-        logger.info("Searching openSUSE-based repositories (Zypper)")
+    # Search with all query variations
+    for query_variant in query_variations:
+        logger.debug(f"Searching with query variant: '{query_variant}'")
         
+        # Search based on detected distribution
+        if detected == "arch":
+            try:
+                logger.debug("Starting AUR search")
+                aur_results = search_aur(query_variant, cache_manager if use_cache else None)
+                results.extend(aur_results)
+            except Exception as e:
+                if query_variant == query_str:  # Only log errors for the original query
+                    search_errors.append("AUR")
+
+            try:
+                logger.debug("Starting pacman search")
+                pacman_results = search_pacman(query_variant, cache_manager if use_cache else None) 
+                results.extend(pacman_results)
+            except Exception as e:
+                if query_variant == query_str:
+                    search_errors.append("Pacman")
+
+        elif detected == "debian":
+            try:
+                logger.debug("Starting APT search")
+                apt_results = search_apt(query_variant, cache_manager if use_cache else None)
+                results.extend(apt_results)
+            except Exception as e:
+                if query_variant == query_str:
+                    search_errors.append("APT")
+
+        elif detected == "fedora":
+            try:
+                logger.debug("Starting DNF search")
+                dnf_results = search_dnf(query_variant, cache_manager if use_cache else None)
+                results.extend(dnf_results)
+            except Exception as e:
+                if query_variant == query_str:
+                    search_errors.append("DNF")
+                
+        elif detected == "suse":
+            logger.info("Searching openSUSE-based repositories (Zypper)")
+            
+            try:
+                logger.debug("Starting Zypper search")
+                zypper_results = search_zypper(query_variant, cache_manager if use_cache else None)
+                results.extend(zypper_results)
+                logger.info(f"Zypper search returned {len(zypper_results)} results")
+            except Exception as e:
+                if query_variant == query_str:
+                    handle_search_errors("zypper", e)
+                    search_errors.append("Zypper")
+
+        # Universal package managers
         try:
-            logger.debug("Starting Zypper search")
-            zypper_results = search_zypper(query_str, cache_manager if use_cache else None)
-            results.extend(zypper_results)
-            logger.info(f"Zypper search returned {len(zypper_results)} results")
-        except Exception as e:
-            handle_search_errors("zypper", e)
-            search_errors.append("Zypper")
+            logger.debug("Starting Flatpak search")
+            flatpak_results = search_flatpak(query_variant, cache_manager if use_cache else None)
+            results.extend(flatpak_results)
+        except Exception:
+            if query_variant == query_str:
+                search_errors.append("Flatpak")
 
-    # Universal package managers
-    try:
-        logger.debug("Starting Flatpak search")
-        flatpak_results = search_flatpak(query_str, cache_manager if use_cache else None)
-        results.extend(flatpak_results)
-    except Exception:
-        search_errors.append("Flatpak")
-
-    try:
-        logger.debug("Starting Snap search")
-        snap_results = search_snap(query_str, cache_manager if use_cache else None)
-        results.extend(snap_results)
-    except Exception:
-        search_errors.append("Snap")
+        try:
+            logger.debug("Starting Snap search")
+            snap_results = search_snap(query_variant, cache_manager if use_cache else None)
+            results.extend(snap_results)
+        except Exception:
+            if query_variant == query_str:
+                search_errors.append("Snap")
+    
+    # Remove duplicate error messages
+    search_errors = list(set(search_errors))
 
     if search_errors:
         console.print(f"[dim]Note: Some sources unavailable: {', '.join(search_errors)}[/dim]\n")

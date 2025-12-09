@@ -117,7 +117,7 @@ class PurposeSuggester:
         """
         return {
             'video-editor': ['kdenlive', 'shotcut', 'openshot', 'obs-studio', 'obs studio', 'davinci-resolve'],
-            'code-editor': ['vscode', 'code', 'visual studio code', 'neovim', 'vim', 'sublime-text', 'intellij'],
+            'code-editor': ['code', 'vscode', 'vscodium', 'visual-studio-code-bin', 'visual studio code', 'neovim', 'vim', 'sublime-text', 'intellij'],
             'image-editor': ['gimp', 'krita', 'inkscape', 'darktable', 'rawtherapee'],
             'text-editor': ['vim', 'neovim', 'emacs', 'nano', 'gedit', 'kate', 'micro'],
             'office': ['libreoffice', 'libreoffice-fresh', 'onlyoffice', 'calligra'],
@@ -255,10 +255,10 @@ class PurposeSuggester:
             desc_lower = (desc or '').lower()
             score = 0
             
-            # Popular app bonus
+            # Popular app bonus - prioritize mainstream apps
             if intent and any(pop.lower() in name_lower for pop in popular):
-                score += 40
-                logger.debug(f"Popular app bonus for '{name}': +40")
+                score += 60
+                logger.debug(f"Popular app bonus for '{name}': +60")
             
             # Name match with query or intent
             if query_lower in name_lower:

@@ -28,4 +28,4 @@ archpkg = "archpkg.cli:main"
 packages = ["archpkg"]
 
 [tool.setuptools.package-data]
-archpkg = ["*.yaml", "*.yml", "*.json"]
+archpkg = ["*.yaml", "*.yml", "*.json", "templates/*.html", "templates/**/*"]
