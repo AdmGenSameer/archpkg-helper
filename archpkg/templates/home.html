@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ArchPkg Helper - Cross-Distro Package Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .hero-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 100px 0;
+        }
+        .feature-card {
+            transition: transform 0.3s ease;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+        }
+        .package-manager-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="fas fa-box-open me-2"></i>
+                ArchPkg Helper
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/search">Search Packages</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/AdmGenSameer/archpkg-helper" target="_blank">
+                            <i class="fab fa-github me-1"></i>GitHub
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <section class="hero-section">
+        <div class="container text-center">
+            <h1 class="display-4 fw-bold mb-4">
+                <i class="fas fa-search me-3"></i>
+                Discover & Install Packages Across Linux Distributions
+            </h1>
+            <p class="lead mb-4">
+                A powerful cross-distro command-line utility that simplifies package discovery and installation
+                across Arch Linux, Ubuntu, Fedora, and more. No more guessing package names or commands!
+            </p>
+            <a href="/search" class="btn btn-light btn-lg me-3">
+                <i class="fas fa-search me-2"></i>Try Package Search
+            </a>
+            <a href="https://github.com/AdmGenSameer/archpkg-helper" class="btn btn-outline-light btn-lg" target="_blank">
+                <i class="fab fa-github me-2"></i>View on GitHub
+            </a>
+        </div>
+    </section>
+
+    <section class="py-5">
+        <div class="container">
+            <div class="row text-center mb-5">
+                <div class="col-lg-8 mx-auto">
+                    <h2 class="display-5 fw-bold">What is ArchPkg Helper?</h2>
+                    <p class="lead text-muted">
+                        ArchPkg Helper is your universal companion for package management on Linux.
+                        Whether you're using Arch Linux, Ubuntu, Fedora, or any other distribution,
+                        our tool helps you find and install software with ease.
+                    </p>
+                </div>
+            </div>
+
+            <div class="row g-4 mb-5">
+                <div class="col-md-4">
+                    <div class="card feature-card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center p-4">
+                            <div class="package-manager-icon text-primary">
+                                <i class="fas fa-search"></i>
+                            </div>
+                            <h5 class="card-title fw-bold">Unified Search</h5>
+                            <p class="card-text text-muted">
+                                Search across multiple package managers simultaneously.
+                                Find packages from pacman, AUR, apt, dnf, flatpak, and snap in one place.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card feature-card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center p-4">
+                            <div class="package-manager-icon text-success">
+                                <i class="fas fa-terminal"></i>
+                            </div>
+                            <h5 class="card-title fw-bold">Auto-Generated Commands</h5>
+                            <p class="card-text text-muted">
+                                Get ready-to-use installation commands tailored to your distribution.
+                                No more manual command crafting or syntax errors.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card feature-card h-100 border-0 shadow-sm">
+                        <div class="card-body text-center p-4">
+                            <div class="package-manager-icon text-info">
+                                <i class="fas fa-linux"></i>
+                            </div>
+                            <h5 class="card-title fw-bold">Cross-Distro Support</h5>
+                            <p class="card-text text-muted">
+                                Works seamlessly across all major Linux distributions.
+                                Automatically detects your system and provides appropriate commands.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-lg-10 mx-auto">
+                    <div class="card border-0 shadow">
+                        <div class="card-body p-5">
+                            <h3 class="card-title text-center mb-4">How It Works</h3>
+                            <div class="row g-4">
+                                <div class="col-md-4 text-center">
+                                    <div class="mb-3">
+                                        <div class="bg-primary text-white rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px; font-size: 24px;">
+                                            <span class="fw-bold">1</span>
+                                        </div>
+                                    </div>
+                                    <h6 class="fw-bold">Search</h6>
+                                    <p class="text-muted small">Enter a package name or keyword in our search interface</p>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <div class="mb-3">
+                                        <div class="bg-success text-white rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px; font-size: 24px;">
+                                            <span class="fw-bold">2</span>
+                                        </div>
+                                    </div>
+                                    <h6 class="fw-bold">Discover</h6>
+                                    <p class="text-muted small">Browse results from multiple package sources with descriptions</p>
+                                </div>
+                                <div class="col-md-4 text-center">
+                                    <div class="mb-3">
+                                        <div class="bg-info text-white rounded-circle d-inline-flex align-items-center justify-content-center" style="width: 60px; height: 60px; font-size: 24px;">
+                                            <span class="fw-bold">3</span>
+                                        </div>
+                                    </div>
+                                    <h6 class="fw-bold">Install</h6>
+                                    <p class="text-muted small">Copy and run the generated command for your distribution</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="bg-light py-5">
+        <div class="container">
+            <div class="row text-center mb-5">
+                <div class="col-lg-8 mx-auto">
+                    <h2 class="display-5 fw-bold">Supported Package Managers</h2>
+                    <p class="lead text-muted">
+                        Comprehensive support for all major Linux package management systems
+                    </p>
+                </div>
+            </div>
+
+            <div class="row g-3 justify-content-center">
+                <div class="col-auto">
+                    <div class="card border-0 shadow-sm text-center" style="width: 120px;">
+                        <div class="card-body">
+                            <i class="fab fa-linux text-warning" style="font-size: 2rem;"></i>
+                            <h6 class="card-title mt-2 mb-0">pacman</h6>
+                            <small class="text-muted">Arch Linux</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="card border-0 shadow-sm text-center" style="width: 120px;">
+                        <div class="card-body">
+                            <i class="fas fa-star text-danger" style="font-size: 2rem;"></i>
+                            <h6 class="card-title mt-2 mb-0">AUR</h6>
+                            <small class="text-muted">Arch User Repo</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="card border-0 shadow-sm text-center" style="width: 120px;">
+                        <div class="card-body">
+                            <i class="fab fa-ubuntu text-orange" style="font-size: 2rem;"></i>
+                            <h6 class="card-title mt-2 mb-0">apt</h6>
+                            <small class="text-muted">Ubuntu/Debian</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="card border-0 shadow-sm text-center" style="width: 120px;">
+                        <div class="card-body">
+                            <i class="fas fa-hat-wizard text-blue" style="font-size: 2rem;"></i>
+                            <h6 class="card-title mt-2 mb-0">dnf</h6>
+                            <small class="text-muted">Fedora</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="card border-0 shadow-sm text-center" style="width: 120px;">
+                        <div class="card-body">
+                            <i class="fas fa-cubes text-success" style="font-size: 2rem;"></i>
+                            <h6 class="card-title mt-2 mb-0">Flatpak</h6>
+                            <small class="text-muted">Universal</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="card border-0 shadow-sm text-center" style="width: 120px;">
+                        <div class="card-body">
+                            <i class="fas fa-bolt text-primary" style="font-size: 2rem;"></i>
+                            <h6 class="card-title mt-2 mb-0">Snap</h6>
+                            <small class="text-muted">Universal</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="py-5">
+        <div class="container">
+            <div class="row text-center mb-5">
+                <div class="col-lg-8 mx-auto">
+                    <h2 class="display-5 fw-bold">Why Choose ArchPkg Helper?</h2>
+                </div>
+            </div>
+
+            <div class="row g-4">
+                <div class="col-md-6">
+                    <div class="d-flex">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="fas fa-clock text-primary" style="font-size: 2rem;"></i>
+                        </div>
+                        <div>
+                            <h5 class="fw-bold">Save Time</h5>
+                            <p class="text-muted mb-0">
+                                No more searching through multiple sources or remembering complex commands.
+                                Get everything you need in seconds.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="fas fa-users text-success" style="font-size: 2rem;"></i>
+                        </div>
+                        <div>
+                            <h5 class="fw-bold">User-Friendly</h5>
+                            <p class="text-muted mb-0">
+                                Perfect for both Linux newcomers and experienced users.
+                                Clear interface and helpful guidance.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="fas fa-shield-alt text-info" style="font-size: 2rem;"></i>
+                        </div>
+                        <div>
+                            <h5 class="fw-bold">Reliable</h5>
+                            <p class="text-muted mb-0">
+                                Uses official package repositories and APIs.
+                                Always up-to-date with the latest package information.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex">
+                        <div class="flex-shrink-0 me-3">
+                            <i class="fas fa-code text-warning" style="font-size: 2rem;"></i>
+                        </div>
+                        <div>
+                            <h5 class="fw-bold">Open Source</h5>
+                            <p class="text-muted mb-0">
+                                Free and open source software. Contribute to the project
+                                and help make Linux package management even better.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-dark text-light py-4">
+        <div class="container text-center">
+            <p class="mb-2">
+                <i class="fas fa-code me-2"></i>
+                Built with ❤️ for the Linux community
+            </p>
+            <p class="mb-0">
+                <a href="https://github.com/AdmGenSameer/archpkg-helper" class="text-light text-decoration-none" target="_blank">
+                    <i class="fab fa-github me-1"></i>View on GitHub
+                </a>
+                <span class="mx-3">•</span>
+                <a href="https://github.com/AdmGenSameer/archpkg-helper/blob/main/LICENSE" class="text-light text-decoration-none" target="_blank">
+                    <i class="fas fa-file-contract me-1"></i>MIT License
+                </a>
+            </p>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -24,7 +24,8 @@ A cross-distro command-line utility that helps you search for packages and gener
 - [Installation (Recommended: pipx)](#installation-recommended-pipx)
 - [Alternative Installation (pip)](#alternative-installation-pip)
 - [Usage](#usage)
-- [File Structure](#file-structure)
+- [🔄 Auto-Update System](#🔄-auto-update-system)
+- [🏗️ Architecture](#🏗️-architecture)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -41,6 +42,8 @@ archpkg-helper is designed to work across Linux distributions. While originally 
 - Cross-distro support (not limited to Arch)
 - Clear, readable output and errors
 - One-command setup via `install.sh`
+- **Batch installation** - Install multiple packages at once with progress tracking
+- **🔄 Auto-update system** with background checking, secure downloads, and user control
 
 ## Quick Start (install.sh)
 
@@ -135,6 +138,19 @@ However, using pipx is strongly recommended instead of breaking system protectio
 
 After installation, the CLI is available as `archpkg`.
 
+## Web Interface
+
+ArchPkg Helper also provides a web interface for a more user-friendly experience:
+
+```sh
+archpkg --web
+```
+
+This starts a web server at `http://localhost:5000` where you can:
+- Browse a descriptive home page explaining the tool
+- Search for packages using a web form
+- View results with copy-to-clipboard functionality
+
 ---
 
 ### Example Commands
@@ -175,16 +191,22 @@ archpkg search firefox
 
 This command will search for the `firefox` package across multiple package managers (e.g., pacman, AUR, apt).
 
+#### 2. Install Multiple Packages (Batch Installation)
 #### 3. Install a Package
 
-Once you have identified a package, use the install command to generate the correct installation command for your system:
+Install multiple packages at once with automatic validation and progress tracking:
 
 ```sh
-archpkg install firefox
+archpkg install firefox vscode git
 ```
 
+This command will:
+- Search for each package automatically
+- Select the best match for each
+- Install all packages sequentially
+- Show progress and a summary of successes/failures
 
-This will generate an appropriate installation command (e.g., `pacman -S firefox` for Arch-based systems).
+Batch installation validates all packages first, then proceeds with installation. If any package fails validation, the entire batch is cancelled.
 
 #### 4. Install a Package from AUR (Arch User Repository)
 
@@ -206,16 +228,56 @@ archpkg install firefox --source pacman
 ```
 
 
+#### 5. Install from GitHub
 #### 6. Remove a Package
 
-To generate commands to remove a package:
+Install software directly from GitHub repositories:
 
 ```sh
-archpkg remove firefox
+archpkg github:user/repo
 ```
 
+Or using full URL:
 
-This will generate the command necessary to uninstall `firefox` from your system.
+Install software directly from GitHub repositories:
+
+```sh
+archpkg github:user/repo
+```
+
+Or using full URL:
+
+```sh
+archpkg https://github.com/user/repo
+```
+
+This feature will:
+- Clone the specified GitHub repository
+- Auto-detect the project type (Python, Node.js, CMake, etc.)
+- Build and install the software automatically
+- Clean up temporary files afterwards
+
+**Supported project types:**
+- Python (setup.py, pyproject.toml)
+- Node.js (package.json)
+- CMake (CMakeLists.txt)
+- Makefile projects
+- Go (go.mod)
+- Rust (Cargo.toml)
+
+**Examples:**
+```sh
+# Install a Python CLI tool
+archpkg github:pypa/pip
+
+# Install a Node.js application
+archpkg github:microsoft/vscode
+
+# Install a Go tool
+archpkg github:golang/go
+```
+
+**Note:** GitPython is recommended for better performance, but the tool will fallback to using git subprocess if not available.
 
 ---
 
@@ -256,6 +318,142 @@ To check the installed version of archpkg:
 ```sh
 archpkg --version
 ```
+---
+
+## 🔄 Auto-Update System
+
+archpkg-helper includes a comprehensive auto-update system that can automatically check for, download, and install package updates while maintaining security and giving you control over the process.
+
+### Features
+
+- **Automatic Update Checking**: Background service that periodically checks for package updates
+- **Secure Downloads**: Resumable downloads with integrity validation
+- **User Control**: Choose between automatic installation or manual approval
+- **Package Tracking**: Track installed packages and their update status
+- **Security Validations**: Checksum validation and command safety checks
+- **Atomic Operations**: Safe configuration and data management
+
+### Quick Start
+
+1. **Enable Auto-Updates**:
+   ```sh
+   archpkg config auto_update_enabled true
+   ```
+
+2. **Start Background Service**:
+   ```sh
+   archpkg service start
+   ```
+
+3. **Track Your First Package**:
+   ```sh
+   archpkg install firefox  # Uses --track by default
+   ```
+
+### Auto-Update Commands
+
+#### Check for Updates
+```sh
+# Check all tracked packages for updates
+archpkg update --check-only
+
+# Check specific packages
+archpkg update firefox vscode --check-only
+```
+
+#### Install Updates
+```sh
+# Install all available updates
+archpkg update
+
+# Install updates for specific packages
+archpkg update firefox vscode
+```
+
+#### Manage Configuration
+```sh
+# View all settings
+archpkg config --list
+
+# Enable auto-updates
+archpkg config auto_update_enabled true
+
+# Set update check interval (hours)
+archpkg config update_check_interval_hours 24
+
+# Enable automatic installation (use with caution)
+archpkg config auto_install_updates true
+```
+
+#### Manage Background Service
+```sh
+# Start the background update service
+archpkg service start
+
+# Stop the service
+archpkg service stop
+
+# Check service status
+archpkg service status
+```
+
+#### View Tracked Packages
+```sh
+# List all tracked packages
+archpkg list-installed
+```
+
+### Configuration Options
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| `auto_update_enabled` | Enable/disable automatic update checking | `false` |
+| `auto_install_updates` | Automatically install updates when found | `false` |
+| `update_check_interval_hours` | Hours between update checks | `24` |
+| `max_concurrent_downloads` | Maximum simultaneous downloads | `3` |
+
+### Security Features
+
+- **Checksum Validation**: Downloaded packages are validated against known checksums
+- **Command Safety**: Installation commands are checked for dangerous patterns
+- **Source Validation**: Only trusted package sources are allowed
+- **Atomic Operations**: Configuration changes are atomic to prevent corruption
+
+### How It Works
+
+1. **Package Tracking**: When you install packages with `archpkg install`, they're automatically tracked
+2. **Background Checking**: The service periodically checks for updates from the original sources
+3. **Secure Downloads**: Updates are downloaded with integrity validation
+4. **User Approval**: You can review updates before installation (unless auto-install is enabled)
+5. **Safe Installation**: Commands are validated for safety before execution
+
+### Examples
+
+**Enable auto-updates for security packages**:
+```sh
+archpkg config auto_update_enabled true
+archpkg service start
+archpkg install firefox thunderbird --track
+```
+
+**Manual update workflow**:
+```sh
+# Check for updates
+archpkg update --check-only
+
+# Review what needs updating
+archpkg list-installed
+
+# Install specific updates
+archpkg update firefox
+```
+
+**Disable auto-updates**:
+```sh
+archpkg service stop
+archpkg config auto_update_enabled false
+```
+
 ---
 
 ## 🏗️ Architecture

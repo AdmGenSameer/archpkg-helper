@@ -2,7 +2,6 @@
 # cli.py
 """Universal Package Helper CLI - Main module with improved consistency."""
 
-import argparse
 import sys
 import os
 import webbrowser
@@ -11,6 +10,13 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 import logging
+
+try:
+    import typer
+    from typer import Option, Argument
+except ImportError:
+    print("Typer is required. Install with: pip install typer[all]")
+    sys.exit(1)
 
 # Import modules
 from archpkg.config import JUNK_KEYWORDS, LOW_PRIORITY_KEYWORDS, BOOST_KEYWORDS, DISTRO_MAP
@@ -24,11 +30,24 @@ from archpkg.search_dnf import search_dnf
 from archpkg.search_zypper import search_zypper
 from archpkg.command_gen import generate_command
 from archpkg.logging_config import get_logger, PackageHelperLogger
+from archpkg.github_install import install_from_github, validate_github_url
+from archpkg.web import app as web_app
+from archpkg.config_manager import get_user_config, set_config_option
+from archpkg.update_manager import check_for_updates, trigger_update_check
+from archpkg.download_manager import install_updates, start_background_update_service, stop_background_update_service
+from archpkg.installed_apps import add_installed_package, get_all_installed_packages, get_packages_with_updates
 from archpkg.suggest import suggest_apps, list_purposes
 from archpkg.cache import get_cache_manager, CacheConfig
 
 console = Console()
 logger = get_logger(__name__)
+
+# Create Typer app
+app = typer.Typer(
+    name="archpkg",
+    help="Universal package manager helper for Linux distributions",
+    add_completion=False
+)
 
 # Dependency check for `distro`
 try:
@@ -409,12 +428,176 @@ def handle_search_errors(source_name: str, error: Exception) -> None:
     message = error_messages.get(source_name, {}).get(error_type, f"{source_name} search encountered an error.")
     console.print(f"[yellow]{source_name.upper()}: {message}[/yellow]")
 
+def batch_install_packages(package_names: List[str]) -> None:
+    """Install multiple packages in batch mode with progress tracking."""
+    logger.info(f"Starting batch installation for packages: {package_names}")
+    
+    if not package_names:
+        logger.warning("No packages specified for batch installation")
+        console.print("[red]No packages specified for batch installation.[/red]")
+        return
+    
+    detected = detect_distro()
+    console.print(f"\n[bold cyan]Batch Installation Mode[/bold cyan]")
+    console.print(f"Target platform: [cyan]{detected}[/cyan]")
+    console.print(f"Packages to install: [yellow]{', '.join(package_names)}[/yellow]\n")
+    
+    # Validate all packages first
+    console.print("[blue]Validating packages...[/blue]")
+    validated_packages = []
+    validation_errors = []
+    
+    for i, pkg_name in enumerate(package_names, 1):
+        console.print(f"  [{i}/{len(package_names)}] Checking '{pkg_name}'...")
+        
+        results = []
+        search_errors = []
+        
+        # Search based on detected distribution
+        if detected == "arch":
+            try:
+                aur_results = search_aur(pkg_name)
+                results.extend(aur_results)
+            except Exception as e:
+                search_errors.append("AUR")
+                
+            try:
+                pacman_results = search_pacman(pkg_name) 
+                results.extend(pacman_results)
+            except Exception as e:
+                search_errors.append("Pacman")
+                
+        elif detected == "debian":
+            try:
+                apt_results = search_apt(pkg_name)
+                results.extend(apt_results)
+            except Exception as e:
+                search_errors.append("APT")
+                
+        elif detected == "fedora":
+            try:
+                dnf_results = search_dnf(pkg_name)
+                results.extend(dnf_results)
+            except Exception as e:
+                search_errors.append("DNF")
+
+        # Universal package managers
+        try:
+            flatpak_results = search_flatpak(pkg_name)
+            results.extend(flatpak_results)
+        except Exception:
+            search_errors.append("Flatpak")
+
+        try:
+            snap_results = search_snap(pkg_name)
+            results.extend(snap_results)
+        except Exception:
+            search_errors.append("Snap")
+
+        if not results:
+            validation_errors.append(f"'{pkg_name}': No packages found")
+            console.print(f"    [red]✗[/red] No packages found")
+            continue
+            
+        top_matches = get_top_matches(pkg_name, results, limit=1)  # Get only the best match
+        if not top_matches:
+            validation_errors.append(f"'{pkg_name}': No suitable matches found")
+            console.print(f"    [red]✗[/red] No suitable matches found")
+            continue
+            
+        pkg, desc, source = top_matches[0]
+        command = generate_command(pkg, source)
+        
+        if not command:
+            validation_errors.append(f"'{pkg_name}': Cannot generate install command for {source}")
+            console.print(f"    [red]✗[/red] Cannot generate install command")
+            continue
+            
+        validated_packages.append((pkg_name, pkg, desc, source, command))
+        console.print(f"    [green]✓[/green] Found: {pkg} ({source})")
+    
+    if validation_errors:
+        console.print(f"\n[red]Validation failed for {len(validation_errors)} package(s):[/red]")
+        for error in validation_errors:
+            console.print(f"  - {error}")
+        console.print("\n[yellow]Batch installation cancelled due to validation errors.[/yellow]")
+        return
+    
+    console.print(f"\n[green]✓ All {len(validated_packages)} packages validated successfully![/green]\n")
+    
+    # Proceed with installation
+    console.print("[blue]Starting batch installation...[/blue]\n")
+    
+    successful_installs = []
+    failed_installs = []
+    
+    for i, (original_name, pkg, desc, source, command) in enumerate(validated_packages, 1):
+        console.print(f"[{i}/{len(validated_packages)}] Installing [bold cyan]{pkg}[/bold cyan] ({source})...")
+        console.print(f"  Command: [dim]{command}[/dim]")
+        
+        logger.info(f"Installing package {i}/{len(validated_packages)}: {pkg} from {source}")
+        exit_code = os.system(command)
+        
+        if exit_code == 0:
+            console.print(f"  [green]✓[/green] Successfully installed {pkg}")
+            successful_installs.append(pkg)
+        else:
+            console.print(f"  [red]✗[/red] Failed to install {pkg} (exit code: {exit_code})")
+            failed_installs.append((pkg, exit_code))
+    
+    # Show summary
+    console.print(f"\n[bold]Batch Installation Summary:[/bold]")
+    console.print(f"Total packages: {len(validated_packages)}")
+    console.print(f"[green]Successful: {len(successful_installs)}[/green]")
+    
+    if successful_installs:
+        console.print(f"  - {', '.join(successful_installs)}")
+    
+    if failed_installs:
+        console.print(f"[red]Failed: {len(failed_installs)}[/red]")
+        for pkg, code in failed_installs:
+            console.print(f"  - {pkg} (exit code: {code})")
+    
+    if failed_installs:
+        console.print(f"\n[yellow]Note: {len(failed_installs)} package(s) failed to install. Check the errors above.[/yellow]")
+
 def main() -> None:
     """
     Main entrypoint for CLI search + install flow.
     IMPROVED: Better type annotations and error handling.
     """
+    # Legacy main function - now handled by Typer commands
+    app()
 
+# Typer Commands
+
+@app.callback()
+def callback():
+    """
+    Universal package manager helper for Linux distributions.
+
+    Search and install packages across multiple package managers:
+    pacman, AUR, apt, dnf, flatpak, snap
+    """
+    pass
+
+@app.command()
+def search(
+    query: str = Argument(..., help="Name of the software to search for"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging"),
+    limit: int = Option(5, "--limit", "-l", help="Maximum number of results to show")
+) -> None:
+    """
+    Search for packages across all available package managers.
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    logger.info(f"Searching for: {query}")
+
+    if not query.strip():
+        console.print("[red]Error: Empty search query[/red]")
+        raise typer.Exit(1)
     logger.info("Starting archpkg-helper CLI")
     
     # Custom help message with emojis and comprehensive information
@@ -702,48 +885,34 @@ def handle_search_command(args, cache_manager) -> None:
 
     # Search based on detected distribution
     if detected == "arch":
-        logger.info("Searching Arch-based repositories (AUR + pacman)")
-        
         try:
             logger.debug("Starting AUR search")
             aur_results = search_aur(query, cache_manager if use_cache else None)
             results.extend(aur_results)
-            logger.info(f"AUR search returned {len(aur_results)} results")
         except Exception as e:
-            handle_search_errors("aur", e)
             search_errors.append("AUR")
-            
+
         try:
             logger.debug("Starting pacman search")
             pacman_results = search_pacman(query, cache_manager if use_cache else None) 
             results.extend(pacman_results)
-            logger.info(f"Pacman search returned {len(pacman_results)} results")
         except Exception as e:
-            handle_search_errors("pacman", e)
             search_errors.append("Pacman")
-            
+
     elif detected == "debian":
-        logger.info("Searching Debian-based repositories (APT)")
-        
         try:
             logger.debug("Starting APT search")
             apt_results = search_apt(query, cache_manager if use_cache else None)
             results.extend(apt_results)
-            logger.info(f"APT search returned {len(apt_results)} results")
         except Exception as e:
-            handle_search_errors("apt", e)
             search_errors.append("APT")
-            
+
     elif detected == "fedora":
-        logger.info("Searching Fedora-based repositories (DNF)")
-        
         try:
             logger.debug("Starting DNF search")
             dnf_results = search_dnf(query, cache_manager if use_cache else None)
             results.extend(dnf_results)
-            logger.info(f"DNF search returned {len(dnf_results)} results")
         except Exception as e:
-            handle_search_errors("dnf", e)
             search_errors.append("DNF")
             
     elif detected == "suse":
@@ -759,32 +928,22 @@ def handle_search_command(args, cache_manager) -> None:
             search_errors.append("Zypper")
 
     # Universal package managers
-    logger.info("Searching universal package managers (Flatpak + Snap)")
-    
     try:
         logger.debug("Starting Flatpak search")
         flatpak_results = search_flatpak(query, cache_manager if use_cache else None)
         results.extend(flatpak_results)
-        logger.info(f"Flatpak search returned {len(flatpak_results)} results")
-    except Exception as e:
-        handle_search_errors("flatpak", e)
+    except Exception:
         search_errors.append("Flatpak")
 
     try:
         logger.debug("Starting Snap search")
         snap_results = search_snap(query, cache_manager if use_cache else None)
         results.extend(snap_results)
-        logger.info(f"Snap search returned {len(snap_results)} results")
-    except Exception as e:
-        handle_search_errors("snap", e)
+    except Exception:
         search_errors.append("Snap")
 
-    # Show search summary
     if search_errors:
-        logger.warning(f"Some search sources failed: {search_errors}")
         console.print(f"[dim]Note: Some sources unavailable: {', '.join(search_errors)}[/dim]\n")
-
-    logger.info(f"Total search results: {len(results)}")
 
     if not results:
         logger.info("No results found, providing GitHub fallback")
@@ -799,21 +958,11 @@ def handle_search_command(args, cache_manager) -> None:
 
     top_matches = get_top_matches(query, deduplicated_results, limit=5)
     if not top_matches:
-        logger.warning("No close matches found after scoring")
-        console.print(Panel(
-            f"[yellow]Found {len(results)} packages, but none match '{query}' closely.[/yellow]\n\n"
-            "[bold cyan]Suggestions:[/bold cyan]\n"
-            "- Try a more specific search term\n"
-            "- Check spelling of the package name\n"
-            "- Use broader keywords (e.g., 'editor' instead of 'vim')\n"
-            f"- Search GitHub: [cyan]https://github.com/search?q={query.replace(' ', '+')}[/cyan]",
-            title="No Close Matches",
-            border_style="yellow"
-        ))
-        return
+        console.print("[yellow]No close matches found.[/yellow]")
+        raise typer.Exit(1)
 
     # Display results
-    table = Table(title="Top Matching Packages")
+    table = Table(title="Matching Packages")
     table.add_column("Index", style="cyan", no_wrap=True)
     table.add_column("Package Name", style="green")
     table.add_column("Source", style="blue")
@@ -868,72 +1017,222 @@ def handle_search_command(args, cache_manager) -> None:
         command = generate_command(pkg, source)
         
         if not command:
-            logger.error(f"Failed to generate install command for {source} package: {pkg}")
-            console.print(Panel(
-                f"[red]Cannot generate install command for {source} packages.[/red]\n\n"
-                "[bold cyan]Possible solutions:[/bold cyan]\n"
-                f"- Install {source.lower()} package manager first\n"
-                "- Check if the package manager is in your PATH\n"
-                f"- Manually install: check {source.lower()} documentation",
-                title="Command Generation Failed",
-                border_style="red"
-            ))
-            return
-            
-        logger.info(f"Generated install command: {command}")
-        console.print(f"\n[bold green]Install Command:[/bold green] {command}")
+            console.print(f"[red]Cannot generate install command for {package_name}[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"[bold green]Install Command:[/bold green] {command}")
         console.print("[bold yellow]Press Enter to install, or Ctrl+C to cancel...[/bold yellow]")
-        
+
         try:
             input()
-            logger.info("User confirmed installation, executing command")
             console.print("[blue]Running install command...[/blue]")
             exit_code = os.system(command)
-            
+
             if exit_code != 0:
-                logger.error(f"Installation failed with exit code: {exit_code}")
-                console.print(Panel(
-                    f"[red]Installation failed with exit code {exit_code}.[/red]\n\n"
-                    "[bold cyan]Troubleshooting:[/bold cyan]\n"
-                    "- Check if you have sufficient permissions\n"
-                    "- Ensure package manager is properly configured\n"
-                    "- Try running the command manually\n"
-                    f"- Command: [cyan]{command}[/cyan]",
-                    title="Installation Failed",
-                    border_style="red"
-                ))
+                console.print(f"[red]Installation failed with exit code {exit_code}[/red]")
+                raise typer.Exit(1)
             else:
-                logger.info(f"Successfully installed package: {pkg}")
-                console.print(f"[bold green]Successfully installed {pkg}![/bold green]")
-                
+                console.print(f"[bold green]Successfully installed {package_name}![/bold green]")
+
+                # Track the installation if requested
+                if track:
+                    detected = detect_distro()
+                    package_source = source or detected
+                    add_installed_package(package_name, package_source, "latest")
+                    console.print(f"[dim]Package tracked for updates[/dim]")
+
         except KeyboardInterrupt:
-            logger.info("Installation cancelled by user (Ctrl+C)")
-            console.print("\n[yellow]Installation cancelled by user.[/yellow]")
-            
-    except KeyboardInterrupt:
-        logger.info("Package selection cancelled by user (Ctrl+C)")
-        console.print("\n[yellow]Selection cancelled by user.[/yellow]")
+            console.print("\n[yellow]Installation cancelled.[/yellow]")
+            raise typer.Exit(1)
+    else:
+        # Multiple packages - use batch installation
+        logger.info(f"Installing multiple packages: {packages}")
+
+        # For batch installation, we don't support custom source specification
+        # as it would be complex to handle different sources for different packages
+        if source:
+            console.print("[yellow]Warning: --source flag ignored for batch installation. Using auto-detection.[/yellow]")
+
+        # Use the existing batch installation function
+        batch_install_packages(packages)
+
+        # Track all successfully installed packages if requested
+        if track:
+            detected = detect_distro()
+            for package_name in packages:
+                try:
+                    add_installed_package(package_name, detected, "latest")
+                except Exception as e:
+                    logger.warning(f"Failed to track package {package_name}: {e}")
+            console.print(f"[dim]Successfully installed packages tracked for updates[/dim]")
+
+@app.command()
+def update(
+    packages: Optional[List[str]] = Argument(None, help="Specific packages to update (all if not specified)"),
+    check_only: bool = Option(False, "--check-only", "-c", help="Only check for updates, don't install"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Check for and install package updates.
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    if check_only:
+        console.print("[blue]Checking for updates...[/blue]")
+        result = trigger_update_check()
+
+        if result["status"] == "success":
+            checked = result["checked"]
+            updates_found = result["updates_found"]
+
+            if updates_found > 0:
+                console.print(f"[green]Found {updates_found} update(s) available![/green]")
+                console.print("Run 'archpkg update' to install them.")
+            else:
+                console.print("[green]All packages are up to date![/green]")
+        else:
+            console.print(f"[red]Update check failed: {result.get('message', 'Unknown error')}[/red]")
+            raise typer.Exit(1)
+    else:
+        console.print("[blue]Installing updates...[/blue]")
+        result = install_updates(packages)
+
+        if result["status"] == "success":
+            installed = result["installed"]
+            failed = result["failed"]
+
+            if installed > 0:
+                console.print(f"[green]Successfully installed {installed} update(s)[/green]")
+
+            if failed > 0:
+                console.print(f"[red]Failed to install {failed} update(s)[/red]")
+                for item in result["results"]:
+                    if item["status"] == "failed":
+                        console.print(f"  - {item['package']}: {item.get('error', 'Unknown error')}")
+
+            if installed == 0 and failed == 0:
+                console.print("[green]No updates available[/green]")
+        else:
+            console.print("[red]Update installation failed[/red]")
+            raise typer.Exit(1)
+
+@app.command()
+def config(
+    key: Optional[str] = Argument(None, help="Configuration key to get/set"),
+    value: Optional[str] = Argument(None, help="Value to set (if setting)"),
+    list_all: bool = Option(False, "--list", "-l", help="List all configuration settings"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Manage archpkg configuration settings.
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    config = get_user_config()
+
+    if list_all:
+        console.print("[bold]Current Configuration:[/bold]")
+        for k, v in config.__dict__.items():
+            if not k.startswith('_'):
+                console.print(f"  {k}: {v}")
+        return
+
+    if key is None:
+        console.print("[red]Error: Specify a configuration key or use --list[/red]")
+        raise typer.Exit(1)
+
+    if value is None:
+        # Get configuration value
+        if hasattr(config, key):
+            console.print(f"{key}: {getattr(config, key)}")
+        else:
+            console.print(f"[red]Unknown configuration key: {key}[/red]")
+            raise typer.Exit(1)
+    else:
+        # Set configuration value
+        try:
+            # Convert value to appropriate type
+            if value.lower() in ('true', 'false'):
+                value = value.lower() == 'true'
+            elif value.isdigit():
+                value = int(value)
+            elif value.replace('.', '').isdigit():
+                value = float(value)
+
+            set_config_option(key, value)
+            console.print(f"[green]Updated {key} = {value}[/green]")
+        except Exception as e:
+            console.print(f"[red]Failed to update configuration: {e}[/red]")
+            raise typer.Exit(1)
+
+@app.command()
+def list_installed(
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    List all installed packages being tracked for updates.
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    packages = get_all_installed_packages()
+
+    if not packages:
+        console.print("[yellow]No packages are currently being tracked for updates.[/yellow]")
+        console.print("Use 'archpkg install --track' to track packages for updates.")
+        return
+
+    table = Table(title="Tracked Installed Packages")
+    table.add_column("Package Name", style="green")
+    table.add_column("Source", style="blue")
+    table.add_column("Installed Version", style="cyan")
+    table.add_column("Update Available", style="yellow")
+    table.add_column("Last Updated", style="magenta")
+
+    for pkg in packages:
+        update_status = "[green]No[/green]" if not pkg.update_available else "[red]Yes[/red]"
+        last_updated = pkg.last_updated or "Never"
+        table.add_row(
+            pkg.name,
+            pkg.source,
+            pkg.installed_version or "Unknown",
+            update_status,
+            last_updated
+        )
+
+    console.print(table)
+
+@app.command()
+def service(
+    action: str = Argument(..., help="Action to perform: start, stop, status"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Manage the background update service.
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    if action == "start":
+        start_background_update_service()
+        console.print("[green]Background update service started[/green]")
+    elif action == "stop":
+        stop_background_update_service()
+        console.print("[green]Background update service stopped[/green]")
+    elif action == "status":
+        config = get_user_config()
+        if config.auto_update_enabled:
+            console.print("[green]Background update service is enabled[/green]")
+            console.print(f"Check interval: {config.update_check_interval_hours} hours")
+            console.print(f"Auto-install: {'Enabled' if config.auto_install_updates else 'Disabled'}")
+        else:
+            console.print("[yellow]Background update service is disabled[/yellow]")
+    else:
+        console.print(f"[red]Unknown action: {action}[/red]")
+        console.print("Available actions: start, stop, status")
+        raise typer.Exit(1)
 
 if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        logger.info("Application terminated by user (Ctrl+C)")
-        console.print("\n[yellow]Operation cancelled by user.[/yellow]")
-        sys.exit(0)
-    except Exception as e:
-        PackageHelperLogger.log_exception(logger, "Unexpected error in main application", e)
-        console.print(Panel(
-            f"[red]An unexpected error occurred.[/red]\n\n"
-            f"[bold]Error details:[/bold] {str(e)}\n\n"
-            "[bold cyan]What to do:[/bold cyan]\n"
-            "- Try running the command again\n"
-            "- Check if all dependencies are installed\n"
-            "- Report this issue if it persists\n"
-            "- Include this error message in your report",
-            title="Unexpected Error",
-            border_style="red"
-        ))
-        sys.exit(1) 
-def app():
-    main()
+    app()
