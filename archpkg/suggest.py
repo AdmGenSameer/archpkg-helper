@@ -1,9 +1,7 @@
 #!/usr/bin/python
 # suggest.py
-"""Purpose-based app suggestions module for archpkg."""
+"""Smart hybrid purpose-based app suggestions module for archpkg."""
 
-import os
-import yaml
 import re
 from typing import List, Dict, Optional, Tuple
 from rich.console import Console
@@ -15,273 +13,322 @@ console = Console()
 logger = logging.getLogger(__name__)
 
 class PurposeSuggester:
-    """Handles purpose-based app suggestions."""
+    """Handles smart hybrid purpose-based app suggestions."""
     
-    def __init__(self, data_file: str = None):
-        """Initialize the suggester with a data file.
+    def __init__(self):
+        """Initialize the suggester with intent patterns and mappings."""
+        self.intent_patterns = self._init_intent_patterns()
+        self.intent_search_terms = self._init_intent_search_terms()
+        self.popular_apps = self._init_popular_apps()
         
-        Args:
-            data_file: Path to the YAML file containing purpose mappings
-        """
-        if data_file is None:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            data_file = os.path.join(os.path.dirname(current_dir), 'data', 'purpose_mapping.yaml')
-        
-        self.data_file = data_file
-        self.purpose_mappings = self._load_purpose_mappings()
-        
-    def _load_purpose_mappings(self) -> Dict[str, List[str]]:
-        """Load purpose mappings from YAML file.
+    def _init_intent_patterns(self) -> List[Tuple[re.Pattern, str]]:
+        """Initialize regex patterns for intent extraction.
         
         Returns:
-            Dict mapping purposes to lists of applications
+            List of (pattern, intent) tuples
         """
-        try:
-            if not os.path.exists(self.data_file):
-                logger.error(f"Purpose mapping file not found: {self.data_file}")
-                return {}
-                
-            with open(self.data_file, 'r', encoding='utf-8') as f:
-                mappings = yaml.safe_load(f) or {}
-                
-            logger.info(f"Loaded {len(mappings)} purpose mappings from {self.data_file}")
-            return mappings
+        patterns = [
+            # Video editing
+            (re.compile(r'\b(edit|editing|cut|trim|produce|production)\b.*\b(video|videos|movie|movies|film)\b', re.IGNORECASE), 'video-editor'),
+            (re.compile(r'\bvideo\b.*\b(edit|editing|editor|cut|trim)\b', re.IGNORECASE), 'video-editor'),
+            (re.compile(r'\b(kdenlive|shotcut|openshot|davinci)\b', re.IGNORECASE), 'video-editor'),
             
-        except yaml.YAMLError as e:
-            logger.error(f"Error parsing YAML file {self.data_file}: {e}")
-            return {}
-        except Exception as e:
-            logger.error(f"Error loading purpose mappings from {self.data_file}: {e}")
-            return {}
+            # Code/Programming
+            (re.compile(r'\b(code|coding|program|programming|develop|development|IDE)\b', re.IGNORECASE), 'code-editor'),
+            (re.compile(r'\b(vscode|vim|neovim|emacs|sublime|atom|intellij)\b', re.IGNORECASE), 'code-editor'),
+            (re.compile(r'\btext\b.*\beditor\b', re.IGNORECASE), 'text-editor'),
+            
+            # Image/Graphics editing
+            (re.compile(r'\b(photoshop|gimp|krita)\b', re.IGNORECASE), 'image-editor'),
+            (re.compile(r'\b(edit|editing)\b.*\b(image|images|photo|photos|picture)\b', re.IGNORECASE), 'image-editor'),
+            (re.compile(r'\b(image|photo|picture)\b.*\b(edit|editing|editor)\b', re.IGNORECASE), 'image-editor'),
+            (re.compile(r'\b(graphic|graphics|design|drawing|paint)\b', re.IGNORECASE), 'image-editor'),
+            
+            # Office/Productivity
+            (re.compile(r'\b(office|word|excel|powerpoint|spreadsheet|document|presentation)\b', re.IGNORECASE), 'office'),
+            (re.compile(r'\b(libreoffice|onlyoffice|openoffice)\b', re.IGNORECASE), 'office'),
+            (re.compile(r'\bproductivity\b', re.IGNORECASE), 'office'),
+            
+            # Web browsing
+            (re.compile(r'\b(browser|browsing|web|internet|surf)\b', re.IGNORECASE), 'web-browser'),
+            (re.compile(r'\b(firefox|chrome|chromium|brave|vivaldi)\b', re.IGNORECASE), 'web-browser'),
+            
+            # Music/Audio
+            (re.compile(r'\b(music|audio|sound)\b.*\b(player|play|listen)\b', re.IGNORECASE), 'music-player'),
+            (re.compile(r'\b(music|audio)\b.*\b(edit|editing|editor|produce|production)\b', re.IGNORECASE), 'audio-editor'),
+            (re.compile(r'\b(spotify|rhythmbox|audacity|ardour)\b', re.IGNORECASE), 'music-player'),
+            
+            # Gaming
+            (re.compile(r'\b(game|games|gaming|play)\b', re.IGNORECASE), 'gaming'),
+            (re.compile(r'\b(steam|lutris|wine)\b', re.IGNORECASE), 'gaming'),
+            
+            # Communication
+            (re.compile(r'\b(chat|messaging|voice|video.*call|communicate)\b', re.IGNORECASE), 'communication'),
+            (re.compile(r'\b(discord|telegram|signal|slack|teams|zoom)\b', re.IGNORECASE), 'communication'),
+            
+            # Media player
+            (re.compile(r'\b(media|video|movie)\b.*\bplayer\b', re.IGNORECASE), 'media-player'),
+            (re.compile(r'\b(vlc|mpv)\b', re.IGNORECASE), 'media-player'),
+            
+            # System utilities
+            (re.compile(r'\b(system|monitor|utility|utilities|tool|tools)\b', re.IGNORECASE), 'system-utility'),
+        ]
+        
+        return patterns
     
-    def normalize_query(self, query: str) -> str:
-        """Normalize user query for better matching.
+    def _init_intent_search_terms(self) -> Dict[str, List[str]]:
+        """Initialize mapping from intents to search terms.
+        
+        Returns:
+            Dict mapping intent names to lists of search terms
+        """
+        return {
+            'video-editor': ['video editor', 'kdenlive', 'shotcut', 'openshot', 'davinci resolve', 'obs studio', 'video editing'],
+            'code-editor': ['code editor', 'vscode', 'vim', 'neovim', 'sublime text', 'atom', 'ide', 'intellij'],
+            'image-editor': ['image editor', 'gimp', 'krita', 'inkscape', 'photo editor', 'graphics editor', 'darktable'],
+            'text-editor': ['text editor', 'vim', 'emacs', 'nano', 'gedit', 'kate'],
+            'office': ['libreoffice', 'onlyoffice', 'office suite', 'calligra', 'document editor'],
+            'web-browser': ['firefox', 'chromium', 'brave', 'vivaldi', 'web browser', 'browser'],
+            'music-player': ['music player', 'spotify', 'rhythmbox', 'vlc', 'clementine', 'audio player'],
+            'audio-editor': ['audio editor', 'audacity', 'ardour', 'lmms', 'sound editor'],
+            'gaming': ['steam', 'lutris', 'wine', 'playonlinux', 'gaming', 'game'],
+            'communication': ['discord', 'telegram', 'signal', 'slack', 'teams', 'zoom', 'chat', 'messenger'],
+            'media-player': ['vlc', 'mpv', 'media player', 'video player', 'smplayer'],
+            'system-utility': ['htop', 'system monitor', 'gparted', 'timeshift', 'disk utility'],
+        }
+    
+    def _init_popular_apps(self) -> Dict[str, List[str]]:
+        """Initialize popular apps for each intent.
+        
+        Returns:
+            Dict mapping intent names to lists of popular app names
+        """
+        return {
+            'video-editor': ['kdenlive', 'shotcut', 'openshot', 'obs-studio', 'obs studio', 'davinci-resolve'],
+            'code-editor': ['vscode', 'code', 'visual studio code', 'neovim', 'vim', 'sublime-text', 'intellij'],
+            'image-editor': ['gimp', 'krita', 'inkscape', 'darktable', 'rawtherapee'],
+            'text-editor': ['vim', 'neovim', 'emacs', 'nano', 'gedit', 'kate', 'micro'],
+            'office': ['libreoffice', 'libreoffice-fresh', 'onlyoffice', 'calligra'],
+            'web-browser': ['firefox', 'chromium', 'brave', 'brave-bin', 'vivaldi', 'opera'],
+            'music-player': ['spotify', 'rhythmbox', 'vlc', 'clementine', 'deadbeef'],
+            'audio-editor': ['audacity', 'ardour', 'lmms', 'reaper'],
+            'gaming': ['steam', 'lutris', 'wine', 'playonlinux', 'retroarch'],
+            'communication': ['discord', 'telegram-desktop', 'signal-desktop', 'slack', 'zoom', 'teams'],
+            'media-player': ['vlc', 'mpv', 'smplayer', 'celluloid'],
+            'system-utility': ['htop', 'btop', 'neofetch', 'gparted', 'timeshift', 'gnome-disk-utility'],
+        }
+    
+    def extract_intent(self, query: str) -> Optional[str]:
+        """Extract intent from user query using regex patterns.
         
         Args:
             query: User input query
             
         Returns:
-            Normalized query string
+            Detected intent name or None
         """
-        phrase_normalized = self._normalize_phrases(query)
-        if phrase_normalized != query:
-            return phrase_normalized
-        
-        normalized = query.lower().strip()
-        
-        stop_words = {'apps', 'for', 'to', 'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'i', 'want', 'need', 'looking', 'find', 'search', 'get', 'install', 'download'}
-        words = [word for word in normalized.split() if word not in stop_words]
-        
-        return ' '.join(words)
-    
-    def find_matching_purposes(self, query: str) -> List[Tuple[str, List[str]]]:
-        """Find purposes that match the given query.
-        
-        Args:
-            query: User search query
-            
-        Returns:
-            List of (purpose, apps) tuples that match the query
-        """
-        if not self.purpose_mappings:
-            logger.warning("No purpose mappings loaded")
-            return []
-            
-        normalized_query = self.normalize_query(query)
-        matches = []
-        
-        for purpose, apps in self.purpose_mappings.items():
-            # Check for exact match
-            if normalized_query == purpose.lower():
-                matches.append((purpose, apps))
-                continue
-                
-            if normalized_query in purpose.lower():
-                matches.append((purpose, apps))
-                continue
-                
-            query_words = set(normalized_query.split())
-            purpose_words = set(purpose.lower().split())
-            
-            if query_words.intersection(purpose_words):
-                matches.append((purpose, apps))
-                continue
-                
-            synonyms = self._get_synonyms(normalized_query)
-            for synonym in synonyms:
-                if synonym in purpose.lower():
-                    matches.append((purpose, apps))
-                    break
-        
-        def relevance_score(match):
-            purpose, apps = match
-            purpose_lower = purpose.lower()
-            query_lower = normalized_query.lower()
-            
-            if query_lower == purpose_lower:
-                return 100
-            elif query_lower in purpose_lower:
-                return 80
-            else:
-                query_words = set(query_lower.split())
-                purpose_words = set(purpose_lower.split())
-                return len(query_words.intersection(purpose_words)) * 20
-                
-        matches.sort(key=relevance_score, reverse=True)
-        return matches
-    
-    def _get_synonyms(self, query: str) -> List[str]:
-        """Get synonyms for common terms (enhanced implementation).
-        
-        Args:
-            query: Query string
-            
-        Returns:
-            List of synonym terms
-        """
-        synonym_map = {
-            'edit': ['editing', 'editor', 'modify', 'change', 'cut', 'trim', 'compose'],
-            'video': ['videos', 'movie', 'movies', 'film', 'films', 'clip', 'clips', 'recording'],
-            'music': ['audio', 'sound', 'songs', 'tunes', 'tracks', 'audio', 'soundtrack'],
-            'code': ['coding', 'programming', 'development', 'dev', 'program', 'script', 'software'],
-            'office': ['productivity', 'work', 'business', 'documents', 'spreadsheet', 'presentation'],
-            'graphics': ['image', 'images', 'photo', 'photos', 'picture', 'pictures', 'design', 'art', 'drawing'],
-            'game': ['gaming', 'games', 'play', 'entertainment', 'fun'],
-            'browse': ['browsing', 'web', 'internet', 'surf', 'navigate', 'search'],
-            'communicate': ['communication', 'chat', 'message', 'talk', 'call', 'voice', 'text'],
-            'system': ['system', 'admin', 'administration', 'manage', 'monitor', 'control'],
-            'text': ['writing', 'write', 'document', 'documents', 'note', 'notes', 'editor'],
-            'media': ['multimedia', 'entertainment', 'playback', 'player', 'streaming'],
-            'utility': ['utilities', 'tools', 'tool', 'helper', 'assistant'],
-            'app': ['application', 'program', 'software', 'tool'],
-            'install': ['setup', 'setup', 'download', 'get'],
-            'need': ['want', 'looking', 'find', 'search'],
-            'for': ['to', 'that', 'which'],
-            'apps': ['applications', 'programs', 'software', 'tools'],
-            'to': ['for', 'that', 'which', 'in', 'on'],
-            'the': ['a', 'an', 'some'],
-            'a': ['an', 'some', 'any'],
-            'an': ['a', 'some', 'any']
-        }
-        
-        synonyms = []
-        for word in query.split():
-            if word in synonym_map:
-                synonyms.extend(synonym_map[word])
-                
-        return synonyms
-    
-    def _normalize_phrases(self, query: str) -> str:
-        """Normalize common phrases to standard purposes.
-        
-        Args:
-            query: User input query
-            
-        Returns:
-            Normalized query string
-        """
-        phrase_mappings = {
-            'edit videos': 'video editing',
-            'video editor': 'video editing',
-            'video editing software': 'video editing',
-            'apps to edit videos': 'video editing',
-            'video editing apps': 'video editing',
-            'video editing tools': 'video editing',
-            'video editing programs': 'video editing',
-            
-            'office work': 'office',
-            'office apps': 'office',
-            'office software': 'office',
-            'office suite': 'office',
-            'productivity apps': 'office',
-            'work apps': 'office',
-            'business apps': 'office',
-            
-            'music apps': 'music',
-            'music software': 'music',
-            'audio apps': 'music',
-            'music player': 'music',
-            'audio editor': 'music',
-            'music production': 'music',
-            
-            'code editor': 'coding',
-            'programming apps': 'coding',
-            'development tools': 'coding',
-            'coding apps': 'coding',
-            'programming tools': 'coding',
-            'dev tools': 'coding',
-            'software development': 'coding',
-            
-            'image editor': 'graphics',
-            'photo editor': 'graphics',
-            'graphics apps': 'graphics',
-            'design apps': 'graphics',
-            'drawing apps': 'graphics',
-            'image editing': 'graphics',
-            'photo editing': 'graphics',
-            
-            'gaming apps': 'gaming',
-            'games': 'gaming',
-            'game launcher': 'gaming',
-            'play games': 'gaming',
-            
-            'web browser': 'browsing',
-            'browser': 'browsing',
-            'internet apps': 'browsing',
-            'surf the web': 'browsing',
-            
-            'chat apps': 'communication',
-            'messaging apps': 'communication',
-            'communication apps': 'communication',
-            'voice chat': 'communication',
-            'video call': 'communication',
-            
-            'system tools': 'system',
-            'admin tools': 'system',
-            'system utilities': 'system',
-            'system monitor': 'system',
-            
-            'text editor': 'text editing',
-            'writing apps': 'text editing',
-            'note taking': 'text editing',
-            'document editor': 'text editing',
-            
-            'media player': 'media',
-            'video player': 'media',
-            'music player': 'media',
-            'entertainment apps': 'media',
-            'streaming apps': 'media',
-            
-            'utility apps': 'utilities',
-            'helper apps': 'utilities',
-            'system utilities': 'utilities',
-            'command line tools': 'utilities'
-        }
-        
         query_lower = query.lower().strip()
         
-        # Check for exact phrase matches first
-        for phrase, purpose in phrase_mappings.items():
-            if phrase in query_lower:
-                return purpose
+        # Try to match patterns
+        for pattern, intent in self.intent_patterns:
+            if pattern.search(query_lower):
+                logger.info(f"Detected intent '{intent}' from query '{query}'")
+                return intent
         
-        return query
+        logger.info(f"No specific intent detected from query '{query}'")
+        return None
     
-    def suggest_apps(self, query: str, max_results: int = 10) -> List[Tuple[str, List[str]]]:
-        """Get app suggestions for a given purpose query.
+    def search_packages(self, search_terms: List[str]) -> List[Tuple[str, str, str]]:
+        """Search for packages using multiple search terms.
+        
+        Args:
+            search_terms: List of search terms to query
+            
+        Returns:
+            List of (name, description, source) tuples
+        """
+        from archpkg.search_pacman import search_pacman
+        from archpkg.search_aur import search_aur
+        from archpkg.search_flatpak import search_flatpak
+        from archpkg.search_snap import search_snap
+        from archpkg.search_apt import search_apt
+        from archpkg.search_dnf import search_dnf
+        from archpkg.search_zypper import search_zypper
+        from archpkg.exceptions import PackageManagerNotFound, PackageSearchException
+        import distro
+        
+        all_results = []
+        detected_distro = distro.id().lower().strip()
+        
+        # Determine which native package managers to use
+        native_searches = []
+        if detected_distro in ['arch', 'manjaro', 'endeavouros', 'garuda']:
+            native_searches = [
+                ('pacman', search_pacman),
+                ('aur', search_aur),
+            ]
+        elif detected_distro in ['ubuntu', 'debian', 'mint', 'pop', 'elementary']:
+            native_searches = [('apt', search_apt)]
+        elif detected_distro in ['fedora', 'rhel', 'centos', 'rocky', 'almalinux']:
+            native_searches = [('dnf', search_dnf)]
+        elif detected_distro in ['opensuse', 'opensuse-leap', 'opensuse-tumbleweed', 'suse', 'sles']:
+            native_searches = [('zypper', search_zypper)]
+        
+        # Universal package managers
+        universal_searches = [
+            ('flatpak', search_flatpak),
+            ('snap', search_snap),
+        ]
+        
+        # Search with each term
+        for term in search_terms[:3]:  # Limit to first 3 terms to avoid too many searches
+            logger.debug(f"Searching for term: '{term}'")
+            
+            # Search native package managers
+            for source_name, search_func in native_searches:
+                try:
+                    results = search_func(term, None)  # No cache for suggestions
+                    all_results.extend(results)
+                    logger.debug(f"Found {len(results)} results from {source_name} for '{term}'")
+                except (PackageManagerNotFound, PackageSearchException) as e:
+                    logger.debug(f"{source_name} search failed for '{term}': {e}")
+                except Exception as e:
+                    logger.debug(f"Unexpected error in {source_name} search for '{term}': {e}")
+            
+            # Search universal package managers
+            for source_name, search_func in universal_searches:
+                try:
+                    results = search_func(term, None)  # No cache for suggestions
+                    all_results.extend(results)
+                    logger.debug(f"Found {len(results)} results from {source_name} for '{term}'")
+                except (PackageManagerNotFound, PackageSearchException) as e:
+                    logger.debug(f"{source_name} search failed for '{term}': {e}")
+                except Exception as e:
+                    logger.debug(f"Unexpected error in {source_name} search for '{term}': {e}")
+        
+        return all_results
+    
+    def rank_packages(self, packages: List[Tuple[str, str, str]], intent: Optional[str], query: str) -> List[Tuple[str, str, str, int]]:
+        """Rank packages by relevance with smart scoring.
+        
+        Args:
+            packages: List of (name, description, source) tuples
+            intent: Detected intent
+            query: Original query
+            
+        Returns:
+            List of (name, description, source, score) tuples, sorted by score
+        """
+        scored = []
+        query_lower = query.lower()
+        popular = self.popular_apps.get(intent, []) if intent else []
+        
+        # Deduplicate packages by name
+        seen_names = {}
+        for name, desc, source in packages:
+            name_lower = name.lower()
+            if name_lower not in seen_names:
+                seen_names[name_lower] = (name, desc, source)
+            else:
+                # Prefer packages from certain sources
+                _, _, existing_source = seen_names[name_lower]
+                source_priority = {'pacman': 3, 'apt': 3, 'dnf': 3, 'zypper': 3, 'aur': 2, 'flatpak': 1, 'snap': 0}
+                if source_priority.get(source, 0) > source_priority.get(existing_source, 0):
+                    seen_names[name_lower] = (name, desc, source)
+        
+        # Score each unique package
+        for name, desc, source in seen_names.values():
+            name_lower = name.lower()
+            desc_lower = (desc or '').lower()
+            score = 0
+            
+            # Popular app bonus
+            if intent and any(pop.lower() in name_lower for pop in popular):
+                score += 40
+                logger.debug(f"Popular app bonus for '{name}': +40")
+            
+            # Name match with query or intent
+            if query_lower in name_lower:
+                score += 50
+                logger.debug(f"Name match bonus for '{name}': +50")
+            elif intent and intent.replace('-', ' ') in name_lower:
+                score += 30
+                logger.debug(f"Intent match bonus for '{name}': +30")
+            
+            # Query words in name or description
+            query_words = set(query_lower.split())
+            name_words = set(name_lower.replace('-', ' ').split())
+            desc_words = set(desc_lower.split())
+            
+            word_matches = len(query_words & name_words)
+            if word_matches > 0:
+                score += word_matches * 10
+                logger.debug(f"Word match bonus for '{name}': +{word_matches * 10}")
+            
+            desc_matches = len(query_words & desc_words)
+            if desc_matches > 0:
+                score += desc_matches * 5
+                logger.debug(f"Description match bonus for '{name}': +{desc_matches * 5}")
+            
+            # Official repo bonus
+            if source in ['pacman', 'apt', 'dnf', 'zypper']:
+                score += 20
+                logger.debug(f"Official repo bonus for '{name}': +20")
+            
+            # Penalize likely libraries/development packages
+            library_keywords = ['lib', '-dev', '-devel', 'headers', 'sdk', 'api']
+            if any(kw in name_lower for kw in library_keywords):
+                score -= 30
+                logger.debug(f"Library penalty for '{name}': -30")
+            
+            # Bonus for desktop applications (common app suffixes)
+            if any(name_lower.endswith(suffix) for suffix in ['-desktop', '-app', '-gtk', '-qt']):
+                score += 10
+                logger.debug(f"Desktop app bonus for '{name}': +10")
+            
+            scored.append((name, desc, source, score))
+        
+        # Sort by score descending
+        scored.sort(key=lambda x: x[3], reverse=True)
+        
+        return scored
+    
+    def suggest_apps(self, query: str, max_results: int = 10) -> List[Tuple[str, str, str, int]]:
+        """Get app suggestions for a given purpose query using smart hybrid approach.
         
         Args:
             query: User purpose query
-            max_results: Maximum number of purpose categories to return
+            max_results: Maximum number of apps to return
             
         Returns:
-            List of (purpose, apps) tuples
+            List of (name, description, source, score) tuples
         """
-        matches = self.find_matching_purposes(query)
-        return matches[:max_results]
+        # Extract intent
+        intent = self.extract_intent(query)
+        
+        # Get search terms
+        if intent and intent in self.intent_search_terms:
+            search_terms = self.intent_search_terms[intent]
+            logger.info(f"Using search terms for intent '{intent}': {search_terms[:3]}")
+        else:
+            # Fallback to using query as search term
+            search_terms = [query]
+            logger.info(f"No specific intent, using query as search term: '{query}'")
+        
+        # Search packages
+        packages = self.search_packages(search_terms)
+        logger.info(f"Found {len(packages)} total packages")
+        
+        if not packages:
+            return []
+        
+        # Rank packages
+        ranked = self.rank_packages(packages, intent, query)
+        
+        return ranked[:max_results]
     
-    def display_suggestions(self, query: str, max_results: int = 5) -> bool:
-        """Display app suggestions in a formatted table.
+    def display_suggestions(self, query: str, max_results: int = 10) -> bool:
+        """Display app suggestions in a formatted table with smart hybrid approach.
         
         Args:
             query: User purpose query
@@ -290,122 +337,110 @@ class PurposeSuggester:
         Returns:
             True if suggestions were found and displayed, False otherwise
         """
+        # Show understanding message
+        intent = self.extract_intent(query)
+        if intent:
+            intent_display = intent.replace('-', ' ').title()
+            console.print(Panel(
+                f"🔍 Understanding: [cyan]'{query}'[/cyan]\n"
+                f"Detected intent: [bold green]{intent_display}[/bold green]",
+                border_style="blue"
+            ))
+        else:
+            console.print(Panel(
+                f"🔍 Searching for: [cyan]'{query}'[/cyan]",
+                border_style="blue"
+            ))
+        
+        console.print()
+        
         suggestions = self.suggest_apps(query, max_results)
         
         if not suggestions:
             console.print(Panel(
                 f"[yellow]No suggestions found for '{query}'.[/yellow]\n\n"
                 "[bold cyan]Try these examples:[/bold cyan]\n"
-                "- [cyan]archpkg suggest video editing[/cyan]\n"
-                "- [cyan]archpkg suggest office[/cyan]\n"
-                "- [cyan]archpkg suggest coding[/cyan]\n"
-                "- [cyan]archpkg suggest music[/cyan]\n"
-                "- [cyan]archpkg suggest graphics[/cyan]\n\n"
-                "[bold]Available purposes:[/bold] " + ", ".join(self.purpose_mappings.keys()),
+                "- [cyan]archpkg suggest I want to edit videos[/cyan]\n"
+                "- [cyan]archpkg suggest something like photoshop[/cyan]\n"
+                "- [cyan]archpkg suggest IDE for python[/cyan]\n"
+                "- [cyan]archpkg suggest office apps[/cyan]\n"
+                "- [cyan]archpkg suggest web browser[/cyan]",
                 title="No Suggestions Found",
                 border_style="yellow"
             ))
             return False
         
-   
-        for i, (purpose, apps) in enumerate(suggestions, 1):
-            table = Table(title=f"Recommended apps for '{purpose}'")
-            table.add_column("Index", style="cyan", no_wrap=True)
-            table.add_column("Package Name", style="green")
-            table.add_column("Description", style="magenta")
+        # Display results in a table
+        table = Table(title="📦 Suggested Apps")
+        table.add_column("#", style="cyan", no_wrap=True, width=3)
+        table.add_column("Package", style="green", no_wrap=True)
+        table.add_column("Source", style="blue", no_wrap=True, width=8)
+        table.add_column("Description", style="magenta")
+        
+        for idx, (name, desc, source, score) in enumerate(suggestions, 1):
+            # Truncate description if too long
+            display_desc = desc if desc else "No description"
+            if len(display_desc) > 60:
+                display_desc = display_desc[:57] + "..."
             
-            for idx, app in enumerate(apps, 1):
-              
-                description = self._get_app_description(app)
-                table.add_row(str(idx), app, description)
-            
-            console.print(table)
-            
-            if i < len(suggestions):
-                console.print()  
+            table.add_row(str(idx), name, source, display_desc)
+        
+        console.print(table)
+        console.print()
         
         return True
     
-    def _get_app_description(self, app_name: str) -> str:
-        """Get a brief description for an app (placeholder implementation).
+    def list_available_intents(self) -> None:
+        """Display all available intents and their search terms."""
+        table = Table(title="Available Intents")
+        table.add_column("Intent", style="green")
+        table.add_column("Example Queries", style="cyan")
+        table.add_column("Search Terms", style="magenta")
         
-        Args:
-            app_name: Name of the application
-            
-        Returns:
-            Brief description of the application
-        """
-        # This is a placeholder - in a real implementation, you might
-        # query package managers for descriptions or maintain a separate
-        # description database
-        descriptions = {
-            'kdenlive': 'Professional video editor',
-            'shotcut': 'Free, open-source video editor',
-            'openshot': 'Simple video editor',
-            'obs-studio': 'Live streaming and recording software',
-            'libreoffice-fresh': 'Complete office suite',
-            'onlyoffice-bin': 'Office suite with online collaboration',
-            'audacity': 'Audio editor and recorder',
-            'vlc': 'Media player',
-            'lmms': 'Digital audio workstation',
-            'vscode': 'Code editor by Microsoft',
-            'neovim': 'Vim-based text editor',
-            'gimp': 'Image editor',
-            'inkscape': 'Vector graphics editor',
-            'krita': 'Digital painting application',
-            'steam': 'Gaming platform',
-            'firefox': 'Web browser',
-            'discord': 'Voice and text chat',
-            'git': 'Version control system',
-            'htop': 'Interactive process viewer',
-            'vim': 'Text editor'
+        intent_examples = {
+            'video-editor': 'edit videos, video editor',
+            'code-editor': 'code editor, IDE for python',
+            'image-editor': 'something like photoshop, image editor',
+            'text-editor': 'text editor',
+            'office': 'office apps, productivity',
+            'web-browser': 'web browser, browser',
+            'music-player': 'music player',
+            'audio-editor': 'audio editor, edit sound',
+            'gaming': 'gaming, play games',
+            'communication': 'chat, messaging',
+            'media-player': 'video player, media player',
+            'system-utility': 'system tools, utilities',
         }
         
-        return descriptions.get(app_name, 'Application')
-    
-    def list_available_purposes(self) -> None:
-        """Display all available purposes."""
-        if not self.purpose_mappings:
-            console.print(Panel(
-                "[red]No purpose mappings available.[/red]",
-                title="Error",
-                border_style="red"
-            ))
-            return
-            
-        table = Table(title="Available Purposes")
-        table.add_column("Purpose", style="green")
-        table.add_column("App Count", style="cyan")
-        table.add_column("Sample Apps", style="magenta")
-        
-        for purpose, apps in self.purpose_mappings.items():
-            sample_apps = ", ".join(apps[:3])
-            if len(apps) > 3:
-                sample_apps += "..."
-            table.add_row(purpose, str(len(apps)), sample_apps)
+        for intent, search_terms in self.intent_search_terms.items():
+            examples = intent_examples.get(intent, intent)
+            terms = ", ".join(search_terms[:3])
+            if len(search_terms) > 3:
+                terms += "..."
+            table.add_row(intent.replace('-', ' ').title(), examples, terms)
         
         console.print(table)
+        console.print()
+        console.print("[bold cyan]Tip:[/bold cyan] You can use natural language like:")
+        console.print("  • [cyan]archpkg suggest I want to edit videos[/cyan]")
+        console.print("  • [cyan]archpkg suggest something like photoshop[/cyan]")
+        console.print("  • [cyan]archpkg suggest IDE for python[/cyan]")
 
 
-def suggest_apps(query: str, data_file: str = None) -> bool:
+def suggest_apps(query: str) -> bool:
     """Convenience function to suggest apps for a given purpose.
     
     Args:
         query: User purpose query
-        data_file: Optional path to purpose mapping file
         
     Returns:
         True if suggestions were found and displayed, False otherwise
     """
-    suggester = PurposeSuggester(data_file)
+    suggester = PurposeSuggester()
     return suggester.display_suggestions(query)
 
 
-def list_purposes(data_file: str = None) -> None:
-    """Convenience function to list all available purposes.
-    
-    Args:
-        data_file: Optional path to purpose mapping file
-    """
-    suggester = PurposeSuggester(data_file)
-    suggester.list_available_purposes()
+def list_purposes() -> None:
+    """Convenience function to list all available intents."""
+    suggester = PurposeSuggester()
+    suggester.list_available_intents()
