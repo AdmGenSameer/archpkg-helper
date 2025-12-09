@@ -14,7 +14,11 @@ from archpkg.search_apt import search_apt
 from archpkg.search_dnf import search_dnf
 from archpkg.command_gen import generate_command
 
-app = Flask(__name__)
+# Set explicit template folder path
+base_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(base_dir, 'templates')
+
+app = Flask(__name__, template_folder=template_dir)
 
 @app.route('/')
 def home():
