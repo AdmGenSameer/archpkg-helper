@@ -44,6 +44,7 @@ logger = get_logger(__name__)
 
 # Constants
 PANEL_PADDING = 4  # Padding for panel borders in terminal width calculations
+MIN_PREFIX_LENGTH = 3  # Minimum length for meaningful prefix matching in scoring
 
 def normalize_query(query: str) -> List[str]:
     """Generate query variations for better matching.
@@ -268,10 +269,10 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
         # Prefix matching for query tokens
         for q in query_tokens:
             for token in name_tokens:
-                if token.startswith(q) and len(q) >= 3:  # Only count meaningful prefixes
+                if token.startswith(q) and len(q) >= MIN_PREFIX_LENGTH:  # Only count meaningful prefixes
                     score += 4
             for token in desc_tokens:
-                if token.startswith(q) and len(q) >= 3:
+                if token.startswith(q) and len(q) >= MIN_PREFIX_LENGTH:
                     score += 1
 
         # Boost keywords
