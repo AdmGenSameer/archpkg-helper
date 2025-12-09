@@ -976,7 +976,9 @@ def list_installed(
         console.print("Use 'archpkg install --track' to track packages for updates.")
         return
 
-    table = Table(title="Tracked Installed Packages")
+    # Apply terminal width constraints
+    console_width = console.width if hasattr(console, 'width') else 120
+    table = Table(title="Tracked Installed Packages", width=min(console_width, 120), expand=False)
     table.add_column("Package Name", style="green")
     table.add_column("Source", style="blue")
     table.add_column("Installed Version", style="cyan")
