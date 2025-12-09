@@ -14,8 +14,12 @@ dependencies = [
   "requests",
   "rich",
   "typer[all]",
-  "distro"
+  "distro",
+  "flask"
 ]
+
+[project.optional-dependencies]
+github = ["GitPython"]
 
 [project.scripts]
 archpkg = "archpkg.cli:main"
@@ -24,4 +28,4 @@ archpkg = "archpkg.cli:main"
 packages = ["archpkg"]
 
 [tool.setuptools.package-data]
-archpkg = ["*.yaml", "*.yml", "*.json"]
+archpkg = ["*.yaml", "*.yml", "*.json", "templates/*.html"]
