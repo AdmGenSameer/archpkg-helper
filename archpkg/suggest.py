@@ -15,6 +15,18 @@ logger = logging.getLogger(__name__)
 class PurposeSuggester:
     """Handles smart hybrid purpose-based app suggestions."""
     
+    # Configuration constants
+    MAX_SEARCH_TERMS = 3  # Limit search terms to avoid excessive API calls
+    LIBRARY_KEYWORDS = ['lib', '-dev', '-devel', 'headers', 'sdk', 'api']
+    SOURCE_PRIORITY = {
+        'pacman': 3, 'apt': 3, 'dnf': 3, 'zypper': 3,
+        'aur': 2,
+        'flatpak': 1,
+        'snap': 0
+    }
+    DESCRIPTION_MAX_LENGTH = 60
+    DESCRIPTION_TRUNCATE_AT = 57
+    
     def __init__(self):
         """Initialize the suggester with intent patterns and mappings."""
         self.intent_patterns = self._init_intent_patterns()
@@ -180,14 +192,15 @@ class PurposeSuggester:
             ('snap', search_snap),
         ]
         
-        # Search with each term
-        for term in search_terms[:3]:  # Limit to first 3 terms to avoid too many searches
+        # Search with each term (limited to avoid excessive API calls)
+        for term in search_terms[:self.MAX_SEARCH_TERMS]:
             logger.debug(f"Searching for term: '{term}'")
             
             # Search native package managers
             for source_name, search_func in native_searches:
                 try:
-                    results = search_func(term, None)  # No cache for suggestions
+                    # No cache for suggestions - they're exploratory queries with varied terms
+                    results = search_func(term, None)
                     all_results.extend(results)
                     logger.debug(f"Found {len(results)} results from {source_name} for '{term}'")
                 except (PackageManagerNotFound, PackageSearchException) as e:
@@ -198,7 +211,8 @@ class PurposeSuggester:
             # Search universal package managers
             for source_name, search_func in universal_searches:
                 try:
-                    results = search_func(term, None)  # No cache for suggestions
+                    # No cache for suggestions - they're exploratory queries with varied terms
+                    results = search_func(term, None)
                     all_results.extend(results)
                     logger.debug(f"Found {len(results)} results from {source_name} for '{term}'")
                 except (PackageManagerNotFound, PackageSearchException) as e:
@@ -230,10 +244,9 @@ class PurposeSuggester:
             if name_lower not in seen_names:
                 seen_names[name_lower] = (name, desc, source)
             else:
-                # Prefer packages from certain sources
+                # Prefer packages from certain sources based on priority
                 _, _, existing_source = seen_names[name_lower]
-                source_priority = {'pacman': 3, 'apt': 3, 'dnf': 3, 'zypper': 3, 'aur': 2, 'flatpak': 1, 'snap': 0}
-                if source_priority.get(source, 0) > source_priority.get(existing_source, 0):
+                if self.SOURCE_PRIORITY.get(source, 0) > self.SOURCE_PRIORITY.get(existing_source, 0):
                     seen_names[name_lower] = (name, desc, source)
         
         # Score each unique package
@@ -276,8 +289,7 @@ class PurposeSuggester:
                 logger.debug(f"Official repo bonus for '{name}': +20")
             
             # Penalize likely libraries/development packages
-            library_keywords = ['lib', '-dev', '-devel', 'headers', 'sdk', 'api']
-            if any(kw in name_lower for kw in library_keywords):
+            if any(kw in name_lower for kw in self.LIBRARY_KEYWORDS):
                 score -= 30
                 logger.debug(f"Library penalty for '{name}': -30")
             
@@ -380,8 +392,8 @@ class PurposeSuggester:
         for idx, (name, desc, source, score) in enumerate(suggestions, 1):
             # Truncate description if too long
             display_desc = desc if desc else "No description"
-            if len(display_desc) > 60:
-                display_desc = display_desc[:57] + "..."
+            if len(display_desc) > self.DESCRIPTION_MAX_LENGTH:
+                display_desc = display_desc[:self.DESCRIPTION_TRUNCATE_AT] + "..."
             
             table.add_row(str(idx), name, source, display_desc)
         
