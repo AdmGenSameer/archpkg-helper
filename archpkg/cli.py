@@ -42,6 +42,9 @@ from archpkg.cache import get_cache_manager, CacheConfig
 console = Console()
 logger = get_logger(__name__)
 
+# Constants
+PANEL_PADDING = 4  # Padding for panel borders in terminal width calculations
+
 # Create Typer app
 app = typer.Typer(
     name="archpkg",
@@ -591,6 +594,8 @@ def search(
 ) -> None:
     """
     Search for packages across all available package managers.
+    
+    Supports multi-word queries: archpkg search visual studio code
     """
     if debug:
         PackageHelperLogger.set_debug_mode(True)
@@ -728,7 +733,7 @@ def search(
                 "- Use Ctrl+C to exit",
                 title="Invalid Input",
                 border_style="red",
-                width=min(console_width - 4, 100)
+                width=min(console_width - PANEL_PADDING, 100)
             ))
             return
             
@@ -741,7 +746,7 @@ def search(
                 "- Press Enter to cancel",
                 title="Invalid Choice",
                 border_style="red",
-                width=min(console_width - 4, 100)
+                width=min(console_width - PANEL_PADDING, 100)
             ))
             return
             
