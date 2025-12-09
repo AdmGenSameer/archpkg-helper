@@ -122,4 +122,5 @@ def api_search():
     return jsonify({'results': results[:50]})  # Limit results
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Debug mode disabled for security - never enable in production
+    app.run(debug=False)
