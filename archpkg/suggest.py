@@ -382,8 +382,9 @@ class PurposeSuggester:
             ))
             return False
         
-        # Display results in a table
-        table = Table(title="📦 Suggested Apps")
+        # Display results in a table with width constraints
+        console_width = console.width if hasattr(console, 'width') else 120
+        table = Table(title="📦 Suggested Apps", width=min(console_width, 120), expand=False)
         table.add_column("#", style="cyan", no_wrap=True, width=3)
         table.add_column("Package", style="green", no_wrap=True)
         table.add_column("Source", style="blue", no_wrap=True, width=8)
@@ -404,7 +405,8 @@ class PurposeSuggester:
     
     def list_available_intents(self) -> None:
         """Display all available intents and their search terms."""
-        table = Table(title="Available Intents")
+        console_width = console.width if hasattr(console, 'width') else 120
+        table = Table(title="Available Intents", width=min(console_width, 120), expand=False)
         table.add_column("Intent", style="green")
         table.add_column("Example Queries", style="cyan")
         table.add_column("Search Terms", style="magenta")
