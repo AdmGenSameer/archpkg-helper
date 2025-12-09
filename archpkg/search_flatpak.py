@@ -51,7 +51,7 @@ def search_flatpak(query: str, cache_manager: Optional[object] = None) -> List[T
         logger.debug("Flatpak is available and responsive")
     except FileNotFoundError:
         logger.debug("flatpak command not found")
-        raise PackageManagerNotFound("flatpak command not found. Install flatpak first.")
+        raise PackageManagerNotFound("flatpak")
     except subprocess.CalledProcessError as e:
         logger.error(f"Flatpak version check failed with return code {e.returncode}")
         raise PackageSearchException("flatpak is installed but not working properly.")

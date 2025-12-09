@@ -47,11 +47,8 @@ def search_apt(query: str, cache_manager: Optional[object] = None) -> List[Tuple
                       capture_output=True, check=True, timeout=TIMEOUTS['command_check'])
         logger.debug("APT is available and responsive")
     except FileNotFoundError:
-        logger.error("apt-cache command not found")
-        raise PackageManagerNotFound(
-            "APT package manager is not available on this system. "
-            "This feature requires a Debian/Ubuntu-based distribution."
-        )
+        logger.debug("apt-cache command not found")
+        raise PackageManagerNotFound("apt")
     except subprocess.CalledProcessError as e:
         logger.error(f"APT cache check failed with return code {e.returncode}")
         raise PackageSearchException(

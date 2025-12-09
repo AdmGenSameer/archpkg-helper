@@ -52,7 +52,7 @@ def search_snap(query: str, cache_manager: Optional[object] = None) -> List[Tupl
         logger.debug("Snap is available and responsive")
     except FileNotFoundError:
         logger.debug("snap command not found")
-        raise PackageManagerNotFound("snap command not found. Install snapd first.")
+        raise PackageManagerNotFound("snap")
     except subprocess.CalledProcessError as e:
         # Check stderr safely
         stderr_str = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr or "")

@@ -52,10 +52,8 @@ def search_dnf(query: str, cache_manager: Optional[object] = None) -> List[Tuple
         )
         logger.debug("DNF is available and responsive")
     except FileNotFoundError:
-        logger.error("dnf command not found")
-        raise PackageManagerNotFound(
-            "dnf command not found. This system may not be Fedora/RHEL-based."
-        )
+        logger.debug("dnf command not found")
+        raise PackageManagerNotFound("dnf")
     except subprocess.CalledProcessError as e:
         logger.error(f"DNF version check failed with return code {e.returncode}")
         raise PackageSearchException("dnf is installed but not working properly.")
