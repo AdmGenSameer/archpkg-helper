@@ -1017,7 +1017,7 @@ def handle_search_command(args, cache_manager) -> None:
         command = generate_command(pkg, source)
         
         if not command:
-            console.print(f"[red]Cannot generate install command for {package_name}[/red]")
+            console.print(f"[red]Cannot generate install command for {pkg}[/red]")
             raise typer.Exit(1)
 
         console.print(f"[bold green]Install Command:[/bold green] {command}")
@@ -1032,14 +1032,7 @@ def handle_search_command(args, cache_manager) -> None:
                 console.print(f"[red]Installation failed with exit code {exit_code}[/red]")
                 raise typer.Exit(1)
             else:
-                console.print(f"[bold green]Successfully installed {package_name}![/bold green]")
-
-                # Track the installation if requested
-                if track:
-                    detected = detect_distro()
-                    package_source = source or detected
-                    add_installed_package(package_name, package_source, "latest")
-                    console.print(f"[dim]Package tracked for updates[/dim]")
+                console.print(f"[bold green]Successfully installed {pkg}![/bold green]")
 
         except KeyboardInterrupt:
             console.print("\n[yellow]Installation cancelled.[/yellow]")
