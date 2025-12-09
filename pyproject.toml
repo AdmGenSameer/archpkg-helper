@@ -14,8 +14,7 @@ dependencies = [
   "requests",
   "rich",
   "typer[all]",
-  "distro",
-  "PyYAML"
+  "distro"
 ]
 
 [project.scripts]
