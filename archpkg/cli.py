@@ -26,6 +26,11 @@ from archpkg.command_gen import generate_command
 from archpkg.logging_config import get_logger, PackageHelperLogger
 from archpkg.suggest import suggest_apps, list_purposes
 from archpkg.cache import get_cache_manager, CacheConfig
+from archpkg.github_install import install_from_github, validate_github_url
+from archpkg.config_manager import get_user_config, set_config_option
+from archpkg.update_manager import check_for_updates, trigger_update_check
+from archpkg.download_manager import install_updates, start_background_update_service, stop_background_update_service
+from archpkg.installed_apps import track_package, get_all_installed_packages, get_packages_with_updates, InstalledPackage
 
 console = Console()
 logger = get_logger(__name__)
@@ -352,6 +357,399 @@ def handle_upgrade_command() -> None:
             border_style="red"
         ))
 
+def handle_install_command(args) -> None:
+    """Handle the install command for one or more packages."""
+    packages = args.packages
+    logger.info(f"Install command for packages: {packages}")
+    
+    # Check if it's a GitHub installation
+    if len(packages) == 1 and (packages[0].startswith('github:') or packages[0].startswith('https://github.com/')):
+        github_url = validate_github_url(packages[0])
+        if github_url:
+            success = install_from_github(packages[0])
+            if success:
+                console.print("[bold green]✓ GitHub installation completed![/bold green]")
+            else:
+                console.print("[bold red]✗ GitHub installation failed.[/bold red]")
+                sys.exit(1)
+        else:
+            console.print("[red]Invalid GitHub URL format[/red]")
+            sys.exit(1)
+        return
+    
+    # Determine tracking preference
+    should_track = args.track and not args.no_track
+    
+    # Normal package installation
+    detected = detect_distro()
+    
+    if len(packages) == 1:
+        # Single package installation
+        package_name = packages[0]
+        logger.info(f"Installing single package: {package_name}")
+        
+        # Search for the package
+        results = []
+        if detected == "arch":
+            try:
+                results.extend(search_aur(package_name))
+            except Exception:
+                pass
+            try:
+                results.extend(search_pacman(package_name))
+            except Exception:
+                pass
+        elif detected == "debian":
+            try:
+                results.extend(search_apt(package_name))
+            except Exception:
+                pass
+        elif detected == "fedora":
+            try:
+                results.extend(search_dnf(package_name))
+            except Exception:
+                pass
+        
+        # Universal package managers
+        try:
+            results.extend(search_flatpak(package_name))
+        except Exception:
+            pass
+        try:
+            results.extend(search_snap(package_name))
+        except Exception:
+            pass
+        
+        if not results:
+            console.print(f"[red]No packages found for '{package_name}'[/red]")
+            sys.exit(1)
+        
+        top_matches = get_top_matches(package_name, results, limit=5)
+        if not top_matches:
+            console.print(f"[red]No suitable matches found for '{package_name}'[/red]")
+            sys.exit(1)
+        
+        # Display options
+        table = Table(title="Found Packages")
+        table.add_column("Index", style="cyan", no_wrap=True)
+        table.add_column("Package Name", style="green")
+        table.add_column("Source", style="blue")
+        table.add_column("Description", style="yellow")
+        
+        for idx, (pkg, desc, source) in enumerate(top_matches, 1):
+            table.add_row(str(idx), pkg, source, desc or "No description")
+        
+        console.print(table)
+        
+        try:
+            choice = input("\nSelect a package to install [1-5 or press Enter to cancel]: ")
+            if not choice.strip():
+                console.print("[yellow]Installation cancelled.[/yellow]")
+                return
+            
+            choice = int(choice)
+            if not (1 <= choice <= len(top_matches)):
+                console.print("[red]Invalid choice.[/red]")
+                return
+            
+            pkg, desc, source = top_matches[choice - 1]
+            command = generate_command(pkg, source)
+            
+            if not command:
+                console.print(f"[red]Cannot generate install command for {source}[/red]")
+                return
+            
+            console.print(f"\n[bold green]Install Command:[/bold green] {command}")
+            console.print("[bold yellow]Press Enter to install, or Ctrl+C to cancel...[/bold yellow]")
+            input()
+            
+            console.print("[blue]Running install command...[/blue]")
+            exit_code = os.system(command)
+            
+            if exit_code == 0:
+                console.print(f"[bold green]✓ Successfully installed {pkg}![/bold green]")
+                if should_track:
+                    track_package(pkg, source, "latest")
+                    console.print("[dim]Package tracked for updates[/dim]")
+            else:
+                console.print(f"[red]✗ Installation failed with exit code {exit_code}[/red]")
+                sys.exit(1)
+                
+        except KeyboardInterrupt:
+            console.print("\n[yellow]Installation cancelled.[/yellow]")
+            return
+        except ValueError:
+            console.print("[red]Invalid input. Please enter a number.[/red]")
+            return
+    else:
+        # Batch installation
+        logger.info(f"Batch installation for packages: {packages}")
+        batch_install_packages(packages, should_track)
+
+def batch_install_packages(package_names: List[str], should_track: bool = True) -> None:
+    """Install multiple packages in batch mode with progress tracking."""
+    logger.info(f"Starting batch installation for packages: {package_names}")
+    
+    if not package_names:
+        console.print("[red]No packages specified for batch installation.[/red]")
+        return
+    
+    detected = detect_distro()
+    console.print(f"\n[bold cyan]Batch Installation Mode[/bold cyan]")
+    console.print(f"Target platform: [cyan]{detected}[/cyan]")
+    console.print(f"Packages to install: [yellow]{', '.join(package_names)}[/yellow]\n")
+    
+    # Validate all packages first
+    console.print("[blue]Validating packages...[/blue]")
+    validated_packages = []
+    validation_errors = []
+    
+    for i, pkg_name in enumerate(package_names, 1):
+        console.print(f"  [{i}/{len(package_names)}] Checking '{pkg_name}'...")
+        
+        results = []
+        
+        if detected == "arch":
+            try:
+                results.extend(search_aur(pkg_name))
+            except Exception:
+                pass
+            try:
+                results.extend(search_pacman(pkg_name))
+            except Exception:
+                pass
+        elif detected == "debian":
+            try:
+                results.extend(search_apt(pkg_name))
+            except Exception:
+                pass
+        elif detected == "fedora":
+            try:
+                results.extend(search_dnf(pkg_name))
+            except Exception:
+                pass
+        
+        try:
+            results.extend(search_flatpak(pkg_name))
+        except Exception:
+            pass
+        try:
+            results.extend(search_snap(pkg_name))
+        except Exception:
+            pass
+        
+        if not results:
+            validation_errors.append(f"'{pkg_name}': No packages found")
+            console.print(f"    [red]✗[/red] No packages found")
+            continue
+        
+        top_matches = get_top_matches(pkg_name, results, limit=1)
+        if not top_matches:
+            validation_errors.append(f"'{pkg_name}': No suitable matches found")
+            console.print(f"    [red]✗[/red] No suitable matches found")
+            continue
+        
+        pkg, desc, source = top_matches[0]
+        command = generate_command(pkg, source)
+        
+        if not command:
+            validation_errors.append(f"'{pkg_name}': Cannot generate install command")
+            console.print(f"    [red]✗[/red] Cannot generate install command")
+            continue
+        
+        validated_packages.append((pkg_name, pkg, desc, source, command))
+        console.print(f"    [green]✓[/green] Found: {pkg} ({source})")
+    
+    if validation_errors:
+        console.print(f"\n[red]Validation failed for {len(validation_errors)} package(s):[/red]")
+        for error in validation_errors:
+            console.print(f"  - {error}")
+        console.print("\n[yellow]Batch installation cancelled.[/yellow]")
+        return
+    
+    console.print(f"\n[green]✓ All {len(validated_packages)} packages validated![/green]\n")
+    
+    # Proceed with installation
+    console.print("[blue]Starting batch installation...[/blue]\n")
+    
+    successful_installs = []
+    failed_installs = []
+    
+    for i, (original_name, pkg, desc, source, command) in enumerate(validated_packages, 1):
+        console.print(f"[{i}/{len(validated_packages)}] Installing [bold cyan]{pkg}[/bold cyan] ({source})...")
+        console.print(f"  Command: [dim]{command}[/dim]")
+        
+        exit_code = os.system(command)
+        
+        if exit_code == 0:
+            console.print(f"  [green]✓[/green] Successfully installed {pkg}")
+            successful_installs.append(pkg)
+            if should_track:
+                try:
+                    track_package(pkg, source, "latest")
+                except Exception as e:
+                    logger.warning(f"Failed to track package {pkg}: {e}")
+        else:
+            console.print(f"  [red]✗[/red] Failed to install {pkg}")
+            failed_installs.append((pkg, exit_code))
+    
+    # Summary
+    console.print(f"\n[bold]Batch Installation Summary:[/bold]")
+    console.print(f"Total packages: {len(validated_packages)}")
+    console.print(f"[green]Successful: {len(successful_installs)}[/green]")
+    if successful_installs:
+        console.print(f"  - {', '.join(successful_installs)}")
+    if failed_installs:
+        console.print(f"[red]Failed: {len(failed_installs)}[/red]")
+        for pkg, code in failed_installs:
+            console.print(f"  - {pkg} (exit code: {code})")
+
+def handle_update_command(args) -> None:
+    """Handle the update command."""
+    packages = args.packages if args.packages else None
+    check_only = args.check_only
+    
+    if check_only:
+        console.print("[blue]Checking for updates...[/blue]")
+        result = trigger_update_check()
+        
+        if result["status"] == "success":
+            updates_found = result.get("updates_found", 0)
+            if updates_found > 0:
+                console.print(f"[green]Found {updates_found} update(s) available![/green]")
+                console.print("Run 'archpkg update' to install them.")
+            else:
+                console.print("[green]All packages are up to date![/green]")
+        else:
+            console.print(f"[red]Update check failed: {result.get('message', 'Unknown error')}[/red]")
+    else:
+        console.print("[blue]Installing updates...[/blue]")
+        result = install_updates(packages)
+        
+        if result["status"] == "success":
+            installed = result.get("installed", 0)
+            failed = result.get("failed", 0)
+            
+            if installed > 0:
+                console.print(f"[green]Successfully installed {installed} update(s)[/green]")
+            
+            if failed > 0:
+                console.print(f"[red]Failed to install {failed} update(s)[/red]")
+                for item in result.get("results", []):
+                    if item.get("status") == "failed":
+                        console.print(f"  - {item['package']}: {item.get('error', 'Unknown error')}")
+            
+            if installed == 0 and failed == 0:
+                console.print("[green]No updates available[/green]")
+        else:
+            console.print("[red]Update installation failed[/red]")
+
+def handle_config_command(args) -> None:
+    """Handle the config command."""
+    if args.list:
+        config = get_user_config()
+        console.print("[bold]Current Configuration:[/bold]")
+        for key, value in config.__dict__.items():
+            if not key.startswith('_'):
+                console.print(f"  {key}: {value}")
+        return
+    
+    if not args.key:
+        console.print("[red]Error: Specify a configuration key or use --list[/red]")
+        return
+    
+    if args.value is None:
+        # Get value
+        config = get_user_config()
+        if hasattr(config, args.key):
+            console.print(f"{args.key}: {getattr(config, args.key)}")
+        else:
+            console.print(f"[red]Unknown configuration key: {args.key}[/red]")
+    else:
+        # Set value
+        try:
+            value = args.value
+            # Convert to appropriate type
+            if value.lower() in ('true', 'false'):
+                value = value.lower() == 'true'
+            elif value.isdigit():
+                value = int(value)
+            elif value.replace('.', '').isdigit():
+                value = float(value)
+            
+            set_config_option(args.key, value)
+            console.print(f"[green]Updated {args.key} = {value}[/green]")
+        except Exception as e:
+            console.print(f"[red]Failed to update configuration: {e}[/red]")
+
+def handle_list_installed_command(args) -> None:
+    """Handle the list-installed command."""
+    packages = get_all_installed_packages()
+    
+    if not packages:
+        console.print("[yellow]No packages are currently being tracked for updates.[/yellow]")
+        console.print("Use 'archpkg install --track <package>' to track packages.")
+        return
+    
+    table = Table(title="Tracked Installed Packages")
+    table.add_column("Package Name", style="green")
+    table.add_column("Source", style="blue")
+    table.add_column("Installed Version", style="cyan")
+    table.add_column("Update Available", style="yellow")
+    table.add_column("Last Updated", style="magenta")
+    
+    for pkg in packages:
+        update_status = "[green]No[/green]" if not pkg.update_available else "[red]Yes[/red]"
+        last_updated = pkg.install_date or "Never"
+        table.add_row(
+            pkg.name,
+            pkg.source,
+            pkg.version or "Unknown",
+            update_status,
+            last_updated
+        )
+    
+    console.print(table)
+
+def handle_service_command(args) -> None:
+    """Handle the service command."""
+    action = args.action
+    
+    if action == "start":
+        start_background_update_service()
+        console.print("[green]Background update service started[/green]")
+    elif action == "stop":
+        stop_background_update_service()
+        console.print("[green]Background update service stopped[/green]")
+    elif action == "status":
+        config = get_user_config()
+        if config.auto_update_enabled:
+            console.print("[green]Background update service is enabled[/green]")
+            console.print(f"Check interval: {config.update_check_interval_hours} hours")
+            console.print(f"Auto-install: {'Enabled' if config.auto_install_updates else 'Disabled'}")
+        else:
+            console.print("[yellow]Background update service is disabled[/yellow]")
+
+def handle_web_command(args) -> None:
+    """Handle the web command."""
+    try:
+        from archpkg.web import app as web_app
+        console.print(Panel(
+            f"[bold cyan]🌐 Starting Web Interface[/bold cyan]\n\n"
+            f"Host: [yellow]{args.host}[/yellow]\n"
+            f"Port: [yellow]{args.port}[/yellow]\n\n"
+            f"Access the interface at:\n"
+            f"[cyan]http://{args.host}:{args.port}/[/cyan]\n\n"
+            f"Press [bold]Ctrl+C[/bold] to stop the server.",
+            title="Web Interface",
+            border_style="cyan"
+        ))
+        web_app.run(host=args.host, port=args.port, debug=False)
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Web server stopped.[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Failed to start web server: {e}[/red]")
+
 def handle_search_errors(source_name: str, error: Exception) -> None:
     """Centralized error handling for search operations."""
     PackageHelperLogger.log_exception(logger, f"{source_name} search failed", error)
@@ -532,6 +930,63 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
+    # Install command
+    install_parser = subparsers.add_parser(
+        'install',
+        help='Install one or more packages',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    install_parser.add_argument('packages', type=str, nargs='+', help='Package name(s) to install')
+    install_parser.add_argument('--source', '-s', type=str, help='Package source (auto-detected if not specified)')
+    install_parser.add_argument('--track', action='store_true', default=True, help='Track installation for updates (default: enabled)')
+    install_parser.add_argument('--no-track', action='store_true', help='Do not track installation for updates')
+    
+    # Update command
+    update_parser = subparsers.add_parser(
+        'update',
+        help='Check for and install package updates',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    update_parser.add_argument('packages', type=str, nargs='*', help='Specific packages to update (all if not specified)')
+    update_parser.add_argument('--check-only', '-c', action='store_true', help='Only check for updates, do not install')
+    
+    # Config command
+    config_parser = subparsers.add_parser(
+        'config',
+        help='Manage archpkg configuration settings',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    config_parser.add_argument('key', type=str, nargs='?', help='Configuration key to get/set')
+    config_parser.add_argument('value', type=str, nargs='?', help='Value to set (if setting)')
+    config_parser.add_argument('--list', '-l', action='store_true', help='List all configuration settings')
+    
+    # List-installed command
+    list_installed_parser = subparsers.add_parser(
+        'list-installed',
+        help='List all installed packages being tracked for updates',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Service command
+    service_parser = subparsers.add_parser(
+        'service',
+        help='Manage the background update service',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    service_parser.add_argument('action', type=str, choices=['start', 'stop', 'status'], help='Action to perform')
+    
+    # Web command
+    web_parser = subparsers.add_parser(
+        'web',
+        help='Start the web interface',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    web_parser.add_argument('--port', '-p', type=int, default=5000, help='Port to run the web server on (default: 5000)')
+    web_parser.add_argument('--host', type=str, default='127.0.0.1', help='Host to bind to (default: 127.0.0.1)')
+    
+    # GitHub install command (as a special format of install)
+    # This will be handled in the install command by checking for github: prefix
+    
     # Handle help manually to show custom format
     if '--help' in sys.argv or '-h' in sys.argv:
         parser.print_help()
@@ -601,6 +1056,24 @@ def main() -> None:
     elif args.command == 'upgrade':
         handle_upgrade_command()
         return
+    elif args.command == 'install':
+        handle_install_command(args)
+        return
+    elif args.command == 'update':
+        handle_update_command(args)
+        return
+    elif args.command == 'config':
+        handle_config_command(args)
+        return
+    elif args.command == 'list-installed':
+        handle_list_installed_command(args)
+        return
+    elif args.command == 'service':
+        handle_service_command(args)
+        return
+    elif args.command == 'web':
+        handle_web_command(args)
+        return
     elif args.command == 'search' or args.command is None:
         # Default to search behavior for backward compatibility
         handle_search_command(args, cache_manager)
@@ -610,8 +1083,13 @@ def main() -> None:
             "[red]Unknown command.[/red]\n\n"
             "[bold cyan]Available commands:[/bold cyan]\n"
             "- [cyan]archpkg search firefox[/cyan] - Search for packages by name\n"
+            "- [cyan]archpkg install firefox[/cyan] - Install one or more packages\n"
+            "- [cyan]archpkg update[/cyan] - Check for and install package updates\n"
             "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose\n"
-            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes\n"
+            "- [cyan]archpkg config --list[/cyan] - View configuration settings\n"
+            "- [cyan]archpkg list-installed[/cyan] - List tracked installed packages\n"
+            "- [cyan]archpkg service start[/cyan] - Start background update service\n"
+            "- [cyan]archpkg web[/cyan] - Start web interface\n"
             "- [cyan]archpkg upgrade[/cyan] - Upgrade archpkg tool from GitHub\n"
             "- [cyan]archpkg --help[/cyan] - Show help information",
             title="Invalid Command",
