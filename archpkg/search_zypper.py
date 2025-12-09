@@ -31,7 +31,7 @@ def search_zypper(query: str, cache_manager: Optional[object] = None) -> List[Tu
     logger.info(f"Starting Zypper search for query: '{query}'")
     
     if not query or not query.strip():
-        logger.error("Empty search query provided to Zypper search")
+        logger.debug("Empty search query provided to Zypper search")
         raise ValidationError("Empty search query provided")
 
     # Check cache first if available
@@ -52,15 +52,15 @@ def search_zypper(query: str, cache_manager: Optional[object] = None) -> List[Tu
         )
         logger.debug("Zypper is available and responsive")
     except FileNotFoundError:
-        logger.error("zypper command not found")
+        logger.debug("zypper command not found")
         raise PackageManagerNotFound(
             "zypper command not found. This system may not be openSUSE-based."
         )
     except subprocess.CalledProcessError as e:
-        logger.error(f"Zypper version check failed with return code {e.returncode}")
+        logger.debug(f"Zypper version check failed with return code {e.returncode}")
         raise PackageSearchException("zypper is installed but not working properly.")
     except subprocess.TimeoutExpired:
-        logger.warning("Zypper version check timed out")
+        logger.debug("Zypper version check timed out")
         raise TimeoutError("zypper is not responding.")
 
     try:
@@ -82,27 +82,27 @@ def search_zypper(query: str, cache_manager: Optional[object] = None) -> List[Tu
             return []
         elif result.returncode != 0:
             error_msg = result.stderr.strip()
-            logger.error(f"Zypper search failed with error: {error_msg}")
+            logger.debug(f"Zypper search failed with error: {error_msg}")
             
             # Parse common Zypper error messages
             if "ZYPPER_EXIT_INF_REBOOT_NEEDED" in error_msg or "System management is locked" in error_msg:
-                logger.warning("Zypper is locked by another process")
+                logger.debug("Zypper is locked by another process")
                 raise PackageSearchException("Zypper is locked. Another package operation may be running.")
             elif "Failed to cache rpm database" in error_msg:
-                logger.error("Zypper cache error")
+                logger.debug("Zypper cache error")
                 raise PackageSearchException("Zypper cache error. Try: sudo zypper refresh")
             elif "Cannot access" in error_msg or "Download failed" in error_msg:
-                logger.error("Zypper cannot connect to repositories")
+                logger.debug("Zypper cannot connect to repositories")
                 raise NetworkError(
                     "Cannot connect to Zypper repositories. Check internet connection."
                 )
             elif "Permission denied" in error_msg:
-                logger.warning("Zypper permission denied")
+                logger.debug("Zypper permission denied")
                 raise PackageSearchException(
                     "Permission denied accessing Zypper. Try running with sudo if needed."
                 )
             else:
-                logger.error(f"Zypper search failed with unknown error: {error_msg}")
+                logger.debug(f"Zypper search failed with unknown error: {error_msg}")
                 raise PackageSearchException(
                     f"zypper search failed: {error_msg or 'Unknown error'}"
                 )
@@ -182,7 +182,7 @@ def search_zypper(query: str, cache_manager: Optional[object] = None) -> List[Tu
         return packages
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Zypper search timed out after {TIMEOUTS['zypper']}s")
+        logger.debug(f"Zypper search timed out after {TIMEOUTS['zypper']}s")
         raise TimeoutError("Zypper search timed out. This can happen with large repositories.")
     except (ValidationError, PackageManagerNotFound, TimeoutError, NetworkError, PackageSearchException):
         # Re-raise our specific exceptions

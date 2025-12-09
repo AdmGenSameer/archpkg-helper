@@ -30,7 +30,7 @@ def search_apt(query: str, cache_manager: Optional[object] = None) -> List[Tuple
     
     # Input validation
     if not query or not query.strip():
-        logger.error("Empty search query provided to APT search")
+        logger.debug("Empty search query provided to APT search")
         raise ValidationError("Search query cannot be empty. Please provide a package name to search for.")
     
     # Check cache first if available
@@ -50,12 +50,12 @@ def search_apt(query: str, cache_manager: Optional[object] = None) -> List[Tuple
         logger.debug("apt-cache command not found")
         raise PackageManagerNotFound("apt")
     except subprocess.CalledProcessError as e:
-        logger.error(f"APT cache check failed with return code {e.returncode}")
+        logger.debug(f"APT cache check failed with return code {e.returncode}")
         raise PackageSearchException(
             "APT cache is installed but not functioning properly. Try running: sudo apt update"
         )
     except subprocess.TimeoutExpired:
-        logger.warning("APT cache version check timed out")
+        logger.debug("APT cache version check timed out")
         raise TimeoutError("APT cache is not responding. Please check your system configuration.")
 
     try:
@@ -73,19 +73,19 @@ def search_apt(query: str, cache_manager: Optional[object] = None) -> List[Tuple
         
         if result.returncode != 0:
             error_msg = result.stderr.strip()
-            logger.warning(f"APT search failed with error: {error_msg}")
+            logger.debug(f"APT search failed with error: {error_msg}")
             
             if "Unable to locate package" in error_msg:
                 logger.info("No packages found (normal result)")
                 return []  # no packages found, which is normal
             elif "E: Could not open lock file" in error_msg:
-                logger.error("APT cache is locked")
+                logger.debug("APT cache is locked")
                 raise PackageSearchException(
                     "Cannot access APT cache - another package operation may be running. "
                     "Wait a moment and try again, or run: sudo apt update"
                 )
             else:
-                logger.error(f"APT search failed with unknown error: {error_msg}")
+                logger.debug(f"APT search failed with unknown error: {error_msg}")
                 raise PackageSearchException(
                     "APT search failed. Try updating your package cache with: sudo apt update"
                 )
@@ -122,7 +122,7 @@ def search_apt(query: str, cache_manager: Optional[object] = None) -> List[Tuple
         return packages
         
     except subprocess.TimeoutExpired:
-        logger.error(f"APT search timed out after {TIMEOUTS['apt']}s")
+        logger.debug(f"APT search timed out after {TIMEOUTS['apt']}s")
         raise TimeoutError(
             "APT search timed out. Your package cache may need updating. Try: sudo apt update"
         )

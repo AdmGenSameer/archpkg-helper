@@ -29,7 +29,7 @@ def search_flatpak(query: str, cache_manager: Optional[object] = None) -> List[T
     logger.info(f"Starting Flatpak search for query: '{query}'")
     
     if not query or not query.strip():
-        logger.error("Empty search query provided to Flatpak search")
+        logger.debug("Empty search query provided to Flatpak search")
         raise ValidationError("Empty search query provided")
 
     # Check cache first if available
@@ -53,10 +53,10 @@ def search_flatpak(query: str, cache_manager: Optional[object] = None) -> List[T
         logger.debug("flatpak command not found")
         raise PackageManagerNotFound("flatpak")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Flatpak version check failed with return code {e.returncode}")
+        logger.debug(f"Flatpak version check failed with return code {e.returncode}")
         raise PackageSearchException("flatpak is installed but not working properly.")
     except subprocess.TimeoutExpired:
-        logger.warning("Flatpak version check timed out")
+        logger.debug("Flatpak version check timed out")
         raise TimeoutError("flatpak is not responding. Check if the service is running.")
 
     try:
@@ -78,16 +78,16 @@ def search_flatpak(query: str, cache_manager: Optional[object] = None) -> List[T
             return []
         elif result.returncode != 0:
             error_msg = result.stderr.strip()
-            logger.error(f"Flatpak search failed with error: {error_msg}")
+            logger.debug(f"Flatpak search failed with error: {error_msg}")
             
             if "No remotes found" in error_msg:
-                logger.warning("No Flatpak remotes configured")
+                logger.debug("No Flatpak remotes configured")
                 raise PackageSearchException(
                     "No Flatpak remotes configured. Run: "
                     "flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo"
                 )
             else:
-                logger.error(f"Flatpak search failed with unknown error: {error_msg}")
+                logger.debug(f"Flatpak search failed with unknown error: {error_msg}")
                 raise PackageSearchException(f"flatpak search failed: {error_msg or 'Unknown error'}")
 
         output = result.stdout.strip()
@@ -99,7 +99,7 @@ def search_flatpak(query: str, cache_manager: Optional[object] = None) -> List[T
         # Parse search results (tab-separated format)
         lines = output.split('\n')
         if len(lines) < 2:
-            logger.warning("Flatpak search returned insufficient output lines")
+            logger.debug("Flatpak search returned insufficient output lines")
             return []
 
         packages = []
@@ -132,7 +132,7 @@ def search_flatpak(query: str, cache_manager: Optional[object] = None) -> List[T
         return packages
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Flatpak search timed out after {TIMEOUTS['flatpak']}s")
+        logger.debug(f"Flatpak search timed out after {TIMEOUTS['flatpak']}s")
         raise TimeoutError("Flatpak search timed out. Check your internet connection.")
     except (ValidationError, PackageManagerNotFound, TimeoutError, PackageSearchException):
         # Re-raise our specific exceptions
