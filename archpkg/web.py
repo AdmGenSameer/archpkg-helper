@@ -33,95 +33,55 @@ def search_page():
 @app.route('/api/search')
 def api_search():
     """API endpoint for package search"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
     query = request.args.get('q', '')
     if not query:
         return jsonify({'error': 'Query parameter required'}), 400
 
     results = []
+    unavailable_sources = []
+
+    # Helper function to search and collect results
+    def search_and_append(search_func, source_name):
+        try:
+            search_results = search_func(query)
+            for name, desc, source in search_results:
+                command = generate_command(name, source)
+                results.append({
+                    'name': name,
+                    'description': desc or 'No description available',
+                    'manager': source,
+                    'command': command or 'Command not available'
+                })
+        except Exception as e:
+            logger.debug(f"{source_name} search failed in web API: {e}")
+            unavailable_sources.append(source_name)
 
     # Search across all package managers
-    try:
-        pacman_results = search_pacman(query)
-        for name, desc, source in pacman_results:
-            command = generate_command(name, source)
-            results.append({
-                'name': name,
-                'description': desc or 'No description available',
-                'manager': source,
-                'command': command or 'Command not available'
-            })
-    except Exception:
-        pass
-
-    try:
-        aur_results = search_aur(query)
-        for name, desc, source in aur_results:
-            command = generate_command(name, source)
-            results.append({
-                'name': name,
-                'description': desc or 'No description available',
-                'manager': source,
-                'command': command or 'Command not available'
-            })
-    except Exception:
-        pass
-
-    try:
-        flatpak_results = search_flatpak(query)
-        for name, desc, source in flatpak_results:
-            command = generate_command(name, source)
-            results.append({
-                'name': name,
-                'description': desc or 'No description available',
-                'manager': source,
-                'command': command or 'Command not available'
-            })
-    except Exception:
-        pass
-
-    try:
-        snap_results = search_snap(query)
-        for name, desc, source in snap_results:
-            command = generate_command(name, source)
-            results.append({
-                'name': name,
-                'description': desc or 'No description available',
-                'manager': source,
-                'command': command or 'Command not available'
-            })
-    except Exception:
-        pass
-
-    try:
-        apt_results = search_apt(query)
-        for name, desc, source in apt_results:
-            command = generate_command(name, source)
-            results.append({
-                'name': name,
-                'description': desc or 'No description available',
-                'manager': source,
-                'command': command or 'Command not available'
-            })
-    except Exception:
-        pass
-
-    try:
-        dnf_results = search_dnf(query)
-        for name, desc, source in dnf_results:
-            command = generate_command(name, source)
-            results.append({
-                'name': name,
-                'description': desc or 'No description available',
-                'manager': source,
-                'command': command or 'Command not available'
-            })
-    except Exception:
-        pass
+    search_and_append(search_pacman, 'Pacman')
+    search_and_append(search_aur, 'AUR')
+    search_and_append(search_flatpak, 'Flatpak')
+    search_and_append(search_snap, 'Snap')
+    search_and_append(search_apt, 'APT')
+    search_and_append(search_dnf, 'DNF')
 
     # Sort by relevance (simple: prefer exact matches, then shorter names)
     results.sort(key=lambda x: (x['name'].lower().find(query.lower()), len(x['name'])))
 
-    return jsonify({'results': results[:50]})  # Limit results
+    response_data = {
+        'results': results[:50],  # Limit results
+        'query': query
+    }
+    
+    # Add gentle message about unavailable sources if any
+    if unavailable_sources and len(results) == 0:
+        response_data['message'] = f"No results found. Some sources were unavailable: {', '.join(unavailable_sources)}"
+    elif unavailable_sources:
+        response_data['info'] = f"Note: Some sources unavailable: {', '.join(unavailable_sources)}"
+
+    return jsonify(response_data)
 
 if __name__ == '__main__':
     app.run(debug=True)

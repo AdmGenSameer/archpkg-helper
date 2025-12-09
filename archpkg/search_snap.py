@@ -30,7 +30,7 @@ def search_snap(query: str, cache_manager: Optional[object] = None) -> List[Tupl
     logger.info(f"Starting Snap search for query: '{query}'")
     
     if not query or not query.strip():
-        logger.error("Empty search query provided to Snap search")
+        logger.debug("Empty search query provided to Snap search")
         raise ValidationError("Empty search query provided")
 
     # Check cache first if available
@@ -52,20 +52,20 @@ def search_snap(query: str, cache_manager: Optional[object] = None) -> List[Tupl
         logger.debug("Snap is available and responsive")
     except FileNotFoundError:
         logger.debug("snap command not found")
-        raise PackageManagerNotFound("snap command not found. Install snapd first.")
+        raise PackageManagerNotFound("snap")
     except subprocess.CalledProcessError as e:
         # Check stderr safely
         stderr_str = e.stderr.decode() if isinstance(e.stderr, bytes) else str(e.stderr or "")
-        logger.error(f"Snap version check failed with return code {e.returncode}, stderr: {stderr_str}")
+        logger.debug(f"Snap version check failed with return code {e.returncode}, stderr: {stderr_str}")
         
         if "system does not fully support snapd" in stderr_str.lower():
-            logger.warning("System does not support snapd")
+            logger.debug("System does not support snapd")
             raise PackageManagerNotFound("This system does not support snap packages.")
         else:
-            logger.error("Snapd not working properly")
+            logger.debug("Snapd not working properly")
             raise PackageSearchException("snapd is installed but not working properly.")
     except subprocess.TimeoutExpired:
-        logger.warning("Snap version check timed out")
+        logger.debug("Snap version check timed out")
         raise TimeoutError("snap is not responding. Check if snapd service is running.")
 
     try:
@@ -87,13 +87,13 @@ def search_snap(query: str, cache_manager: Optional[object] = None) -> List[Tupl
             return []
         elif result.returncode != 0:
             error_msg = result.stderr.strip()
-            logger.error(f"Snap search failed with error: {error_msg}")
+            logger.debug(f"Snap search failed with error: {error_msg}")
             
             if "cannot communicate with server" in error_msg.lower():
-                logger.error("Cannot connect to Snap Store")
+                logger.debug("Cannot connect to Snap Store")
                 raise NetworkError("Cannot connect to Snap Store. Check internet connection.")
             else:
-                logger.error(f"Snap search failed with unknown error: {error_msg}")
+                logger.debug(f"Snap search failed with unknown error: {error_msg}")
                 raise PackageSearchException(f"snap search failed: {error_msg or 'Unknown error'}")
 
         output = result.stdout.strip()
@@ -104,7 +104,7 @@ def search_snap(query: str, cache_manager: Optional[object] = None) -> List[Tupl
         logger.debug("Parsing Snap search results")
         lines = output.split('\n')
         if len(lines) < 2:
-            logger.warning("Snap search returned insufficient output lines")
+            logger.debug("Snap search returned insufficient output lines")
             return []
 
         packages = []
@@ -137,7 +137,7 @@ def search_snap(query: str, cache_manager: Optional[object] = None) -> List[Tupl
         return packages
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Snap search timed out after {TIMEOUTS['snap']}s")
+        logger.debug(f"Snap search timed out after {TIMEOUTS['snap']}s")
         raise TimeoutError("Snap search timed out. Check your internet connection.")
     except (ValidationError, PackageManagerNotFound, TimeoutError, NetworkError, PackageSearchException):
         # Re-raise our specific exceptions

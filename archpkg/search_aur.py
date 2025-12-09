@@ -31,7 +31,7 @@ def search_aur(query: str, cache_manager: Optional[object] = None) -> List[Tuple
     
     # Validate input
     if not query or not query.strip():
-        logger.error("Empty search query provided to AUR search")
+        logger.debug("Empty search query provided to AUR search")
         raise ValidationError("Empty search query provided")
     
     # Check cache first if available
@@ -59,18 +59,18 @@ def search_aur(query: str, cache_manager: Optional[object] = None) -> List[Tuple
             data = response.json()
             logger.debug("Successfully parsed AUR API JSON response")
         except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON response from AUR: {str(e)}")
+            logger.debug(f"Invalid JSON response from AUR: {str(e)}")
             raise PackageSearchException(f"Invalid response from AUR: {str(e)}")
         
         # Ensure response is a dictionary
         if not isinstance(data, dict):
-            logger.error(f"Unexpected response format from AUR: {type(data)}")
+            logger.debug(f"Unexpected response format from AUR: {type(data)}")
             raise PackageSearchException("Unexpected response format from AUR")
         
         # Extract results safely
         results = data.get("results", [])
         if not isinstance(results, list):
-            logger.error(f"Invalid results format from AUR: {type(results)}")
+            logger.debug(f"Invalid results format from AUR: {type(results)}")
             raise PackageSearchException("Invalid results format from AUR")
         
         logger.debug(f"AUR API returned {len(results)} raw results")
@@ -84,7 +84,7 @@ def search_aur(query: str, cache_manager: Optional[object] = None) -> List[Tuple
                 processed_results.append((name, description, 'aur'))
                 logger.debug(f"Found AUR package: {name}")
             else:
-                logger.warning(f"Skipping invalid AUR package entry: {pkg}")
+                logger.debug(f"Skipping invalid AUR package entry: {pkg}")
         
         logger.info(f"AUR search completed: {len(processed_results)} valid packages found")
         # IMPROVED: Standardized source name to lowercase
@@ -97,24 +97,24 @@ def search_aur(query: str, cache_manager: Optional[object] = None) -> List[Tuple
         return processed_results
     
     except requests.exceptions.ConnectionError as e:
-        logger.error(f"Connection error during AUR search: {str(e)}")
+        logger.debug(f"Connection error during AUR search: {str(e)}")
         raise NetworkError("Cannot connect to AUR servers. Check your internet connection.")
     except requests.exceptions.Timeout as e:
-        logger.error(f"Timeout error during AUR search: {str(e)}")
+        logger.debug(f"Timeout error during AUR search: {str(e)}")
         raise TimeoutError("AUR search request timed out. Try again later.")
     except requests.exceptions.HTTPError as e:
         # Handle HTTP error codes specifically
         status_code = e.response.status_code
-        logger.error(f"HTTP error during AUR search: {status_code}")
+        logger.debug(f"HTTP error during AUR search: {status_code}")
         
         if status_code == 429:
-            logger.warning("AUR rate limit exceeded")
+            logger.debug("AUR rate limit exceeded")
             raise NetworkError("AUR rate limit exceeded. Please wait before searching again.")
         elif status_code >= 500:
-            logger.error("AUR server error")
+            logger.debug("AUR server error")
             raise NetworkError("AUR servers are experiencing issues. Try again later.")
         else:
-            logger.error(f"AUR request failed with status {status_code}")
+            logger.debug(f"AUR request failed with status {status_code}")
             raise NetworkError(f"AUR request failed with status {status_code}")
     except (ValidationError, NetworkError, TimeoutError, PackageSearchException):
         # Re-raise our specific exceptions

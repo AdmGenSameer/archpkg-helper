@@ -203,10 +203,8 @@ class PurposeSuggester:
                     results = search_func(term, None)
                     all_results.extend(results)
                     logger.debug(f"Found {len(results)} results from {source_name} for '{term}'")
-                except (PackageManagerNotFound, PackageSearchException) as e:
-                    logger.debug(f"{source_name} search failed for '{term}': {e}")
                 except Exception as e:
-                    logger.debug(f"Unexpected error in {source_name} search for '{term}': {e}")
+                    logger.debug(f"{source_name} search failed for '{term}': {e}")
             
             # Search universal package managers
             for source_name, search_func in universal_searches:
@@ -215,15 +213,13 @@ class PurposeSuggester:
                     results = search_func(term, None)
                     all_results.extend(results)
                     logger.debug(f"Found {len(results)} results from {source_name} for '{term}'")
-                except (PackageManagerNotFound, PackageSearchException) as e:
-                    logger.debug(f"{source_name} search failed for '{term}': {e}")
                 except Exception as e:
-                    logger.debug(f"Unexpected error in {source_name} search for '{term}': {e}")
+                    logger.debug(f"{source_name} search failed for '{term}': {e}")
         
         return all_results
     
     def rank_packages(self, packages: List[Tuple[str, str, str]], intent: Optional[str], query: str) -> List[Tuple[str, str, str, int]]:
-        """Rank packages by relevance with smart scoring.
+        """Rank packages by relevance with smart scoring for multi-word queries.
         
         Args:
             packages: List of (name, description, source) tuples
@@ -235,6 +231,8 @@ class PurposeSuggester:
         """
         scored = []
         query_lower = query.lower()
+        query_hyphenated = query_lower.replace(' ', '-')
+        query_concat = query_lower.replace(' ', '')
         popular = self.popular_apps.get(intent, []) if intent else []
         
         # Deduplicate packages by name
@@ -260,23 +258,47 @@ class PurposeSuggester:
                 score += 60
                 logger.debug(f"Popular app bonus for '{name}': +60")
             
-            # Name match with query or intent
-            if query_lower in name_lower:
+            # IMPROVED: Better multi-word query matching
+            # Exact match
+            if query_lower == name_lower:
+                score += 100
+                logger.debug(f"Exact match bonus for '{name}': +100")
+            # Hyphenated match: "code editor" matches "code-editor"
+            elif query_hyphenated == name_lower:
+                score += 90
+                logger.debug(f"Hyphenated match bonus for '{name}': +90")
+            # Concatenated match: "code editor" matches "codeeditor"
+            elif query_concat == name_lower:
+                score += 80
+                logger.debug(f"Concatenated match bonus for '{name}': +80")
+            # Substring match
+            elif query_lower in name_lower:
                 score += 50
                 logger.debug(f"Name match bonus for '{name}': +50")
+            # Hyphenated substring match
+            elif query_hyphenated in name_lower:
+                score += 45
+                logger.debug(f"Hyphenated substring match for '{name}': +45")
+            # Intent match
             elif intent and intent.replace('-', ' ') in name_lower:
                 score += 30
                 logger.debug(f"Intent match bonus for '{name}': +30")
             
-            # Query words in name or description
+            # Query words in name or description (IMPROVED: better weighting)
             query_words = set(query_lower.split())
             name_words = set(name_lower.replace('-', ' ').split())
             desc_words = set(desc_lower.split())
             
-            word_matches = len(query_words & name_words)
-            if word_matches > 0:
-                score += word_matches * 10
-                logger.debug(f"Word match bonus for '{name}': +{word_matches * 10}")
+            word_matches = query_words & name_words
+            if word_matches:
+                # If most words match, give bigger bonus
+                match_ratio = len(word_matches) / len(query_words) if query_words else 0
+                if match_ratio >= 0.8:
+                    score += 40
+                    logger.debug(f"High word match ratio for '{name}': +40")
+                else:
+                    score += len(word_matches) * 10
+                    logger.debug(f"Word match bonus for '{name}': +{len(word_matches) * 10}")
             
             desc_matches = len(query_words & desc_words)
             if desc_matches > 0:

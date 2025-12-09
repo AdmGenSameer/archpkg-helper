@@ -29,7 +29,7 @@ def search_pacman(query: str, cache_manager: Optional[object] = None) -> List[Tu
     logger.info(f"Starting pacman search for query: '{query}'")
     
     if not query or not query.strip():
-        logger.error("Empty search query provided to pacman search")
+        logger.debug("Empty search query provided to pacman search")
         raise ValidationError("Empty search query provided")
 
     # Check cache first if available
@@ -50,13 +50,13 @@ def search_pacman(query: str, cache_manager: Optional[object] = None) -> List[Tu
         )
         logger.debug("Pacman is available and responsive")
     except FileNotFoundError:
-        logger.error("pacman command not found")
+        logger.debug("pacman command not found")
         raise PackageManagerNotFound("pacman command not found. This system may not be Arch-based.")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Pacman version check failed with return code {e.returncode}")
+        logger.debug(f"Pacman version check failed with return code {e.returncode}")
         raise PackageSearchException("pacman is installed but not working properly.")
     except subprocess.TimeoutExpired:
-        logger.warning("Pacman version check timed out")
+        logger.debug("Pacman version check timed out")
         raise TimeoutError(
             "pacman is not responding. The package manager may be locked or misconfigured."
         )
@@ -80,15 +80,15 @@ def search_pacman(query: str, cache_manager: Optional[object] = None) -> List[Tu
             return []
         elif result.returncode != 0:
             error_msg = result.stderr.strip()
-            logger.error(f"Pacman search failed with error: {error_msg}")
+            logger.debug(f"Pacman search failed with error: {error_msg}")
             
             if "could not" in error_msg.lower():
-                logger.warning("Pacman database issue detected")
+                logger.debug("Pacman database issue detected")
                 raise PackageSearchException(
                     "pacman database not initialized or corrupted. Try: sudo pacman -Syu"
                 )
             else:
-                logger.error(f"Pacman search failed with unknown error: {error_msg}")
+                logger.debug(f"Pacman search failed with unknown error: {error_msg}")
                 raise PackageSearchException(f"pacman search failed: {error_msg or 'Unknown error'}")
 
         output = result.stdout.strip()
@@ -134,7 +134,7 @@ def search_pacman(query: str, cache_manager: Optional[object] = None) -> List[Tu
         return results
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Pacman search timed out after {TIMEOUTS['pacman']}s")
+        logger.debug(f"Pacman search timed out after {TIMEOUTS['pacman']}s")
         raise TimeoutError("pacman search timed out. The package database might be updating.")
     except (ValidationError, PackageManagerNotFound, TimeoutError, PackageSearchException):
         # Re-raise our specific exceptions

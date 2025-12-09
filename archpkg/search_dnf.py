@@ -31,7 +31,7 @@ def search_dnf(query: str, cache_manager: Optional[object] = None) -> List[Tuple
     logger.info(f"Starting DNF search for query: '{query}'")
     
     if not query or not query.strip():
-        logger.error("Empty search query provided to DNF search")
+        logger.debug("Empty search query provided to DNF search")
         raise ValidationError("Empty search query provided")
 
     # Check cache first if available
@@ -52,15 +52,13 @@ def search_dnf(query: str, cache_manager: Optional[object] = None) -> List[Tuple
         )
         logger.debug("DNF is available and responsive")
     except FileNotFoundError:
-        logger.error("dnf command not found")
-        raise PackageManagerNotFound(
-            "dnf command not found. This system may not be Fedora/RHEL-based."
-        )
+        logger.debug("dnf command not found")
+        raise PackageManagerNotFound("dnf")
     except subprocess.CalledProcessError as e:
-        logger.error(f"DNF version check failed with return code {e.returncode}")
+        logger.debug(f"DNF version check failed with return code {e.returncode}")
         raise PackageSearchException("dnf is installed but not working properly.")
     except subprocess.TimeoutExpired:
-        logger.warning("DNF version check timed out")
+        logger.debug("DNF version check timed out")
         raise TimeoutError("dnf is not responding.")
 
     try:
@@ -82,24 +80,24 @@ def search_dnf(query: str, cache_manager: Optional[object] = None) -> List[Tuple
             return []
         elif result.returncode != 0:
             error_msg = result.stderr.strip()
-            logger.error(f"DNF search failed with error: {error_msg}")
+            logger.debug(f"DNF search failed with error: {error_msg}")
             
             # Parse common DNF error messages
             if "Error: Cache disabled" in error_msg:
-                logger.warning("DNF cache is disabled")
+                logger.debug("DNF cache is disabled")
                 raise PackageSearchException("DNF cache is disabled. Try: sudo dnf makecache")
             elif "Cannot retrieve metalink" in error_msg:
-                logger.error("DNF cannot connect to repositories")
+                logger.debug("DNF cannot connect to repositories")
                 raise NetworkError(
                     "Cannot connect to DNF repositories. Check internet connection."
                 )
             elif "Permission denied" in error_msg:
-                logger.warning("DNF permission denied")
+                logger.debug("DNF permission denied")
                 raise PackageSearchException(
                     "Permission denied accessing DNF. Try: sudo dnf search"
                 )
             else:
-                logger.error(f"DNF search failed with unknown error: {error_msg}")
+                logger.debug(f"DNF search failed with unknown error: {error_msg}")
                 raise PackageSearchException(
                     f"dnf search failed: {error_msg or 'Unknown error'}"
                 )
@@ -154,7 +152,7 @@ def search_dnf(query: str, cache_manager: Optional[object] = None) -> List[Tuple
         return packages
 
     except subprocess.TimeoutExpired:
-        logger.error(f"DNF search timed out after {TIMEOUTS['dnf']}s")
+        logger.debug(f"DNF search timed out after {TIMEOUTS['dnf']}s")
         raise TimeoutError("DNF search timed out. This can happen with large repositories.")
     except (ValidationError, PackageManagerNotFound, TimeoutError, NetworkError, PackageSearchException):
         # Re-raise our specific exceptions

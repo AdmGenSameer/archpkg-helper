@@ -44,6 +44,7 @@ logger = get_logger(__name__)
 
 # Constants
 PANEL_PADDING = 4  # Padding for panel borders in terminal width calculations
+MIN_PREFIX_LENGTH = 3  # Minimum length for meaningful prefix matching in scoring
 
 def normalize_query(query: str) -> List[str]:
     """Generate query variations for better matching.
@@ -203,7 +204,7 @@ def deduplicate_packages(packages: List[Tuple[str, str, str]], prefer_aur: bool 
     return deduplicated
 
 def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit: int = 5) -> List[Tuple[str, str, str]]:
-    """Get top matching packages with improved scoring algorithm."""
+    """Get top matching packages with improved scoring algorithm for multi-word queries."""
     logger.debug(f"Scoring {len(all_packages)} packages for query: '{query}'")
     
     if not all_packages:
@@ -212,6 +213,9 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
         
     query = query.lower()
     query_tokens = set(query.split())
+    # Create hyphenated and concatenated versions for better matching
+    query_hyphenated = query.replace(" ", "-")
+    query_concat = query.replace(" ", "")
     scored_results = []
 
     for name, desc, source in all_packages:
@@ -225,19 +229,50 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
 
         score = 0
 
+        # IMPROVED: Better handling of multi-word queries
+        # Exact match (highest priority)
         if query == name_l:
             score += 150
             logger.debug(f"Exact match bonus for '{name}': +150")
+        # Check hyphenated version: "jellyfin media player" matches "jellyfin-media-player"
+        elif query_hyphenated == name_l:
+            score += 140
+            logger.debug(f"Hyphenated match bonus for '{name}': +140")
+        # Check concatenated version: "jellyfin media player" matches "jellyfinmediaplayer"
+        elif query_concat == name_l:
+            score += 130
+            logger.debug(f"Concatenated match bonus for '{name}': +130")
+        # Substring match
         elif query in name_l:
             score += 80
             logger.debug(f"Substring match bonus for '{name}': +80")
+        # Check if hyphenated query is in name
+        elif query_hyphenated in name_l:
+            score += 70
+            logger.debug(f"Hyphenated substring match bonus for '{name}': +70")
 
+        # IMPROVED: Token matching with better weight for multi-word queries
+        matched_tokens = query_tokens & name_tokens
+        if matched_tokens:
+            # If most query tokens match, give significant bonus
+            match_ratio = len(matched_tokens) / len(query_tokens)
+            if match_ratio >= 0.8:  # 80% or more tokens match
+                score += 60
+                logger.debug(f"High token match ratio for '{name}': +60")
+            elif match_ratio >= 0.5:  # 50% or more tokens match
+                score += 30
+                logger.debug(f"Medium token match ratio for '{name}': +30")
+            else:
+                score += len(matched_tokens) * 5
+                logger.debug(f"Token matches for '{name}': +{len(matched_tokens) * 5}")
+
+        # Prefix matching for query tokens
         for q in query_tokens:
             for token in name_tokens:
-                if token.startswith(q):
+                if token.startswith(q) and len(q) >= MIN_PREFIX_LENGTH:  # Only count meaningful prefixes
                     score += 4
             for token in desc_tokens:
-                if token.startswith(q):
+                if token.startswith(q) and len(q) >= MIN_PREFIX_LENGTH:
                     score += 1
 
         # Boost keywords
@@ -589,12 +624,90 @@ def batch_install_packages(package_names: List[str]) -> None:
     if failed_installs:
         console.print(f"\n[yellow]Note: {len(failed_installs)} package(s) failed to install. Check the errors above.[/yellow]")
 
+def show_custom_help() -> None:
+    """Display comprehensive custom help text."""
+    help_text = """
+[bold cyan]🎯 ArchPkg Helper - Universal Package Manager for All Linux Distros[/bold cyan]
+
+[bold yellow]📦 What does it do?[/bold yellow]
+   Searches and installs packages across multiple sources:
+   ✓ Official repos (pacman, apt, dnf, zypper)
+   ✓ AUR (Arch User Repository)
+   ✓ Flatpak & Snap (works on any distro)
+
+[bold yellow]🔍 SEARCH FOR PACKAGES[/bold yellow]
+   [cyan]archpkg search <package-name>[/cyan]
+   [cyan]archpkg <package-name>[/cyan]             [dim](search is default)[/dim]
+   
+   Examples:
+   [green]🔸 archpkg firefox[/green]
+   [green]🔸 archpkg visual studio code[/green]
+   [green]🔸 archpkg search telegram[/green]
+   
+   Options:
+   [cyan]--aur[/cyan]              Prefer AUR packages over official repos
+   [cyan]--no-cache[/cyan]         Skip cache, search fresh results
+   [cyan]--limit, -l[/cyan]        Maximum results to show (default: 5)
+
+[bold yellow]💡 GET APP SUGGESTIONS BY PURPOSE[/bold yellow]
+   [cyan]archpkg suggest <purpose>[/cyan]
+   
+   Examples:
+   [green]🔸 archpkg suggest video editing[/green]
+   [green]🔸 archpkg suggest coding[/green]
+   [green]🔸 archpkg suggest gaming[/green]
+   
+   [cyan]--list[/cyan]             Show all available purposes
+
+[bold yellow]🌐 WEB INTERFACE[/bold yellow]
+   [cyan]archpkg web[/cyan]                        Launch web UI
+   [cyan]archpkg web --port 8080[/cyan]            Use custom port
+
+[bold yellow]📦 PACKAGE TRACKING & UPDATES[/bold yellow]
+   [cyan]archpkg list-installed[/cyan]             List tracked packages
+   [cyan]archpkg update[/cyan]                     Install updates
+   [cyan]archpkg update --check-only[/cyan]        Only check for updates
+
+[bold yellow]⚙️  CONFIGURATION[/bold yellow]
+   [cyan]archpkg config --list[/cyan]              Show all settings
+   [cyan]archpkg config <key> <value>[/cyan]       Set a config value
+
+[bold yellow]🔄 BACKGROUND SERVICE[/bold yellow]
+   [cyan]archpkg service start|stop|status[/cyan]
+
+[bold yellow]🔄 UPGRADE ARCHPKG[/bold yellow]
+   [cyan]archpkg upgrade[/cyan]                    Get latest version from GitHub
+
+[bold yellow]🌍 SUPPORTED DISTRIBUTIONS[/bold yellow]
+   [green]Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora,
+   openSUSE, + any distro with Flatpak/Snap support[/green]
+
+[bold yellow]📚 MORE INFORMATION[/bold yellow]
+   Run [cyan]archpkg <command> --help[/cyan] for detailed help on any command
+   Visit: [blue]https://github.com/AdmGenSameer/archpkg-helper[/blue]
+"""
+    console.print(help_text)
+
 def main() -> None:
     """
     Main entrypoint for CLI search + install flow.
     IMPROVED: Better type annotations and error handling.
+    Handles custom help display and default search fallback.
     """
-    # Legacy main function - now handled by Typer commands
+    # Check for help flag first
+    if len(sys.argv) > 1 and sys.argv[1] in ['--help', '-h', 'help']:
+        show_custom_help()
+        return
+    
+    # Check if first argument is a known subcommand
+    known_commands = ['search', 'suggest', 'upgrade', 'web', 'update', 'config', 'list-installed', 'service']
+    
+    # If no arguments or first arg is not a known command, inject 'search' for backward compatibility
+    if len(sys.argv) > 1 and sys.argv[1] not in known_commands and not sys.argv[1].startswith('-'):
+        # First argument is not a known command, treat it as a search query
+        logger.info(f"No known subcommand detected, injecting 'search' command")
+        sys.argv.insert(1, 'search')
+    
     app()
 
 # Typer Commands
@@ -710,6 +823,7 @@ def search(
                 aur_results = search_aur(query_variant, cache_manager if use_cache else None)
                 results.extend(aur_results)
             except Exception as e:
+                logger.debug(f"AUR search failed: {e}")
                 if query_variant == query_str:  # Only log errors for the original query
                     search_errors.append("AUR")
 
@@ -718,6 +832,7 @@ def search(
                 pacman_results = search_pacman(query_variant, cache_manager if use_cache else None) 
                 results.extend(pacman_results)
             except Exception as e:
+                logger.debug(f"Pacman search failed: {e}")
                 if query_variant == query_str:
                     search_errors.append("Pacman")
 
@@ -727,6 +842,7 @@ def search(
                 apt_results = search_apt(query_variant, cache_manager if use_cache else None)
                 results.extend(apt_results)
             except Exception as e:
+                logger.debug(f"APT search failed: {e}")
                 if query_variant == query_str:
                     search_errors.append("APT")
 
@@ -736,6 +852,7 @@ def search(
                 dnf_results = search_dnf(query_variant, cache_manager if use_cache else None)
                 results.extend(dnf_results)
             except Exception as e:
+                logger.debug(f"DNF search failed: {e}")
                 if query_variant == query_str:
                     search_errors.append("DNF")
                 
@@ -757,7 +874,8 @@ def search(
             logger.debug("Starting Flatpak search")
             flatpak_results = search_flatpak(query_variant, cache_manager if use_cache else None)
             results.extend(flatpak_results)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Flatpak search failed: {e}")
             if query_variant == query_str:
                 search_errors.append("Flatpak")
 
@@ -765,7 +883,8 @@ def search(
             logger.debug("Starting Snap search")
             snap_results = search_snap(query_variant, cache_manager if use_cache else None)
             results.extend(snap_results)
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Snap search failed: {e}")
             if query_variant == query_str:
                 search_errors.append("Snap")
     
