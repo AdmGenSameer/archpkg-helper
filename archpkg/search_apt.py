@@ -3,18 +3,19 @@
 IMPROVEMENTS: Standardized source name to lowercase, used config timeouts, unified exception handling."""
 
 import subprocess
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from archpkg.config import TIMEOUTS
 from archpkg.exceptions import PackageManagerNotFound, PackageSearchException, TimeoutError, ValidationError
 from archpkg.logging_config import get_logger, PackageHelperLogger
 
 logger = get_logger(__name__)
 
-def search_apt(query: str) -> List[Tuple[str, str, str]]:
+def search_apt(query: str, cache_manager: Optional[object] = None) -> List[Tuple[str, str, str]]:
     """Search for packages using the APT package manager.
     
     Args:
         query: Search query string
+        cache_manager: Optional cache manager for storing/retrieving results
         
     Returns:
         List[Tuple[str, str, str]]: List of (name, description, source) tuples
@@ -31,6 +32,13 @@ def search_apt(query: str) -> List[Tuple[str, str, str]]:
     if not query or not query.strip():
         logger.error("Empty search query provided to APT search")
         raise ValidationError("Search query cannot be empty. Please provide a package name to search for.")
+    
+    # Check cache first if available
+    if cache_manager:
+        cached_results = cache_manager.get(query, 'apt')
+        if cached_results is not None:
+            logger.info(f"Retrieved {len(cached_results)} APT results from cache")
+            return cached_results
     
     # Check if apt-cache is available
     logger.debug("Checking APT availability")
@@ -108,6 +116,12 @@ def search_apt(query: str) -> List[Tuple[str, str, str]]:
                 logger.debug(f"Found APT package: {name.strip()}")
             
         logger.info(f"APT search completed: {len(packages)} packages found from {lines_processed} lines")
+        
+        # Cache results if cache manager is available
+        if cache_manager and packages:
+            cache_manager.set(query, 'apt', packages)
+            logger.debug(f"Cached {len(packages)} APT results")
+        
         return packages
         
     except subprocess.TimeoutExpired:

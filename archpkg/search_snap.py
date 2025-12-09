@@ -3,18 +3,19 @@
 IMPROVEMENTS: Kept source name lowercase (already consistent), used config timeouts, unified exception handling."""
 
 import subprocess
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from archpkg.config import TIMEOUTS
 from archpkg.exceptions import PackageManagerNotFound, PackageSearchException, TimeoutError, ValidationError, NetworkError
 from archpkg.logging_config import get_logger, PackageHelperLogger
 
 logger = get_logger(__name__)
 
-def search_snap(query: str) -> List[Tuple[str, str, str]]:
+def search_snap(query: str, cache_manager: Optional[object] = None) -> List[Tuple[str, str, str]]:
     """Search for packages using the Snap package manager.
     
     Args:
         query: Search query string
+        cache_manager: Optional cache manager for storing/retrieving results
         
     Returns:
         List[Tuple[str, str, str]]: List of (name, description, source) tuples
@@ -31,6 +32,13 @@ def search_snap(query: str) -> List[Tuple[str, str, str]]:
     if not query or not query.strip():
         logger.error("Empty search query provided to Snap search")
         raise ValidationError("Empty search query provided")
+
+    # Check cache first if available
+    if cache_manager:
+        cached_results = cache_manager.get(query, 'snap')
+        if cached_results is not None:
+            logger.info(f"Retrieved {len(cached_results)} Snap results from cache")
+            return cached_results
 
     # Check if snap is available and working
     logger.debug("Checking Snap availability")
@@ -120,6 +128,12 @@ def search_snap(query: str) -> List[Tuple[str, str, str]]:
                 logger.debug(f"Skipping malformed Snap result line: {line}")
 
         logger.info(f"Snap search completed: {len(packages)} packages found from {lines_processed} lines")
+        
+        # Cache results if cache manager is available
+        if cache_manager and packages:
+            cache_manager.set(query, 'snap', packages)
+            logger.debug(f"Cached {len(packages)} Snap results")
+        
         return packages
 
     except subprocess.TimeoutExpired:

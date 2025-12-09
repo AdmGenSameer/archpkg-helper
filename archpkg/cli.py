@@ -27,6 +27,7 @@ from archpkg.search_flatpak import search_flatpak
 from archpkg.search_snap import search_snap
 from archpkg.search_apt import search_apt
 from archpkg.search_dnf import search_dnf
+from archpkg.search_zypper import search_zypper
 from archpkg.command_gen import generate_command
 from archpkg.logging_config import get_logger, PackageHelperLogger
 from archpkg.github_install import install_from_github, validate_github_url
@@ -35,6 +36,8 @@ from archpkg.config_manager import get_user_config, set_config_option
 from archpkg.update_manager import check_for_updates, trigger_update_check
 from archpkg.download_manager import install_updates, start_background_update_service, stop_background_update_service
 from archpkg.installed_apps import add_installed_package, get_all_installed_packages, get_packages_with_updates
+from archpkg.suggest import suggest_apps, list_purposes
+from archpkg.cache import get_cache_manager, CacheConfig
 
 console = Console()
 logger = get_logger(__name__)
@@ -130,6 +133,47 @@ def is_valid_package(name: str, desc: Optional[str]) -> bool:
     
     return not is_junk
 
+def deduplicate_packages(packages: List[Tuple[str, str, str]], prefer_aur: bool = False) -> List[Tuple[str, str, str]]:
+    """Remove duplicate packages, preferring Pacman over AUR by default.
+    
+    Args:
+        packages: List of (name, description, source) tuples
+        prefer_aur: If True, prefer AUR packages over Pacman when duplicates exist
+        
+    Returns:
+        List[Tuple[str, str, str]]: Deduplicated packages with preferred sources
+    """
+    logger.debug(f"Deduplicating {len(packages)} packages, prefer_aur={prefer_aur}")
+    
+    
+    package_groups = {}
+    for name, desc, source in packages:
+        if name not in package_groups:
+            package_groups[name] = []
+        package_groups[name].append((name, desc, source))
+    
+    deduplicated = []
+    for name, group in package_groups.items():
+        if len(group) == 1:
+            deduplicated.append(group[0])
+        else:
+            sources = [source for _, _, source in group]
+            
+            if prefer_aur and 'aur' in sources:
+                preferred = next((pkg for pkg in group if pkg[2] == 'aur'), group[0])
+                logger.debug(f"Package '{name}' available in multiple sources, preferring AUR")
+            elif 'pacman' in sources:
+                preferred = next((pkg for pkg in group if pkg[2] == 'pacman'), group[0])
+                logger.debug(f"Package '{name}' available in multiple sources, preferring Pacman")
+            else:
+                preferred = group[0]
+                logger.debug(f"Package '{name}' available in multiple sources, using first: {preferred[2]}")
+            
+            deduplicated.append(preferred)
+    
+    logger.info(f"Deduplicated {len(packages)} packages to {len(deduplicated)} unique packages")
+    return deduplicated
+
 def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit: int = 5) -> List[Tuple[str, str, str]]:
     """Get top matching packages with improved scoring algorithm."""
     logger.debug(f"Scoring {len(all_packages)} packages for query: '{query}'")
@@ -153,7 +197,6 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
 
         score = 0
 
-        # Exact match scoring
         if query == name_l:
             score += 150
             logger.debug(f"Exact match bonus for '{name}': +150")
@@ -161,7 +204,6 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
             score += 80
             logger.debug(f"Substring match bonus for '{name}': +80")
 
-        # Fuzzy token matching
         for q in query_tokens:
             for token in name_tokens:
                 if token.startswith(q):
@@ -185,7 +227,7 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
 
         # Source priority (IMPROVED: consistent scoring)
         source_priority = {
-            "pacman": 40, "apt": 40, "dnf": 40,
+            "pacman": 40, "apt": 40, "dnf": 40, "zypper": 40,
             "aur": 20,
             "flatpak": 10,
             "snap": 5
@@ -202,6 +244,27 @@ def get_top_matches(query: str, all_packages: List[Tuple[str, str, str]], limit:
         logger.debug(f"Top match #{i+1}: {pkg_info[0]} (score: {score})")
     
     return top
+
+def show_opensuse_brave_guidance() -> None:
+    """Show guidance for installing Brave browser on openSUSE."""
+    logger.info("Showing Brave browser installation guidance for openSUSE")
+    
+    console.print(Panel(
+        "[bold cyan]Brave Browser on openSUSE[/bold cyan]\n\n"
+        "[yellow]Brave requires adding an external repository.[/yellow]\n\n"
+        "[bold]Option 1: Add Brave Repository (Recommended)[/bold]\n"
+        "1. Import the repository key:\n"
+        "   [cyan]sudo rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc[/cyan]\n\n"
+        "2. Add the Brave repository:\n"
+        "   [cyan]sudo zypper addrepo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo[/cyan]\n\n"
+        "3. Install Brave:\n"
+        "   [cyan]sudo zypper install brave-browser[/cyan]\n\n"
+        "[bold]Option 2: Install via Flatpak[/bold]\n"
+        "   [cyan]flatpak install flathub com.brave.Browser[/cyan]\n\n"
+        "[dim]Note: After adding the repository, you can search for Brave again with archpkg.[/dim]",
+        title="🦁 Brave Browser Installation",
+        border_style="blue"
+    ))
 
 def github_fallback(query: str) -> None:
     """Provide GitHub search fallback with clear messaging."""
@@ -232,6 +295,79 @@ def github_fallback(query: str) -> None:
             f"- Visit: https://github.com/search?q={query.replace(' ', '+')}&type=repositories\n"
             "- Or search manually on GitHub",
             title="Browser Error", 
+            border_style="red"
+        ))
+
+def handle_upgrade_command() -> None:
+    """Handle the upgrade command to update archpkg from GitHub."""
+    logger.info("Starting archpkg upgrade process")
+    
+    console.print(Panel(
+        "[bold cyan]🔄 Upgrading archpkg from GitHub...[/bold cyan]\n\n"
+        "[dim]This will pull the latest code and reinstall archpkg.[/dim]",
+        title="Archpkg Upgrade",
+        border_style="cyan"
+    ))
+    
+    # Check if pipx is available
+    import shutil
+    if not shutil.which("pipx"):
+        logger.error("pipx command not found")
+        console.print(Panel(
+            "[red]❌ pipx is not installed or not in PATH.[/red]\n\n"
+            "[bold cyan]To install pipx:[/bold cyan]\n"
+            "- Arch Linux: [cyan]sudo pacman -S pipx && pipx ensurepath[/cyan]\n"
+            "- Debian/Ubuntu: [cyan]sudo apt install pipx && pipx ensurepath[/cyan]\n"
+            "- Fedora: [cyan]sudo dnf install pipx && pipx ensurepath[/cyan]\n\n"
+            "[bold yellow]Note:[/bold yellow] After installing pipx, restart your terminal.",
+            title="pipx Not Found",
+            border_style="red"
+        ))
+        return
+    
+    console.print("[blue]📥 Pulling latest changes from repository...[/blue]")
+    
+    # Run the upgrade command
+    upgrade_cmd = "pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git"
+    logger.info(f"Executing upgrade command: {upgrade_cmd}")
+    
+    try:
+        console.print("[blue]📦 Reinstalling with latest code...[/blue]\n")
+        exit_code = os.system(upgrade_cmd)
+        
+        if exit_code != 0:
+            logger.error(f"Upgrade failed with exit code: {exit_code}")
+            console.print(Panel(
+                f"[red]❌ Upgrade failed with exit code {exit_code}.[/red]\n\n"
+                "[bold cyan]Troubleshooting:[/bold cyan]\n"
+                "- Check your internet connection\n"
+                "- Ensure you can access GitHub (https://github.com)\n"
+                "- Try again in a few moments\n"
+                "- Check if pipx is working: [cyan]pipx list[/cyan]\n\n"
+                "[bold yellow]Manual upgrade:[/bold yellow]\n"
+                f"Run: [cyan]{upgrade_cmd}[/cyan]",
+                title="Upgrade Failed",
+                border_style="red"
+            ))
+        else:
+            logger.info("Successfully upgraded archpkg")
+            console.print(Panel(
+                "[bold green]✅ Successfully upgraded archpkg! You now have the latest features![/bold green]\n\n"
+                "[bold cyan]💡 Tip:[/bold cyan] Run [cyan]archpkg --help[/cyan] to see what's new!",
+                title="Upgrade Complete",
+                border_style="green"
+            ))
+    except Exception as e:
+        PackageHelperLogger.log_exception(logger, "Unexpected error during upgrade", e)
+        console.print(Panel(
+            f"[red]❌ An unexpected error occurred during upgrade.[/red]\n\n"
+            f"[bold]Error details:[/bold] {str(e)}\n\n"
+            "[bold cyan]What to do:[/bold cyan]\n"
+            "- Check your internet connection\n"
+            "- Ensure pipx is properly installed\n"
+            "- Try running manually: [cyan]pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git[/cyan]\n"
+            "- Report this issue if it persists",
+            title="Upgrade Error",
             border_style="red"
         ))
 
@@ -269,6 +405,11 @@ def handle_search_errors(source_name: str, error: Exception) -> None:
             "not_found": "dnf command not found. Run on Fedora/RHEL-based system.",
             "cache_error": "DNF cache error. Try: sudo dnf clean all && sudo dnf makecache",
             "generic": "DNF search failed. Check DNF configuration or try clearing cache."
+        },
+        "zypper": {
+            "not_found": "zypper command not found. Run on openSUSE-based system.",
+            "cache_error": "Zypper cache error. Try: sudo zypper refresh",
+            "generic": "Zypper search failed. Check Zypper configuration or try refreshing cache."
         }
     }
     
@@ -457,50 +598,346 @@ def search(
     if not query.strip():
         console.print("[red]Error: Empty search query[/red]")
         raise typer.Exit(1)
+    logger.info("Starting archpkg-helper CLI")
+    
+    # Custom help message with emojis and comprehensive information
+    description = """🎯 ArchPkg Helper - Universal Package Manager for All Linux Distros
+
+📦 What does it do?
+   Searches and installs packages across multiple sources:
+   ✓ Official repos (pacman, apt, dnf, zypper)
+   ✓ AUR (Arch User Repository)
+   ✓ Flatpak & Snap (works on any distro)"""
+
+    epilog = """
+🔍 SEARCH FOR PACKAGES
+   archpkg search <package-name>
+   archpkg <package-name>             (search is default)
+   
+   Examples:
+   🔸 archpkg firefox
+   🔸 archpkg visual studio code
+   🔸 archpkg search telegram
+   
+   Flags:
+   --aur              Prefer AUR packages over official repos (Arch only)
+   --no-cache         Skip cache, search fresh results
+
+💡 GET APP SUGGESTIONS BY PURPOSE
+   archpkg suggest <purpose>
+   
+   Examples:
+   🔸 archpkg suggest video editing
+   🔸 archpkg suggest office
+   🔸 archpkg suggest programming
+   
+   --list             Show all available purposes
+
+⚙️ CACHE MANAGEMENT
+   --cache-stats      Show cache statistics
+   --clear-cache all  Clear all cached results
+   --clear-cache aur  Clear only AUR cache
+
+🔧 ADVANCED OPTIONS
+   --debug            Show detailed debug information
+   --log-info         Show logging configuration
+
+🔄 UPGRADE ARCHPKG
+   archpkg upgrade    Upgrade archpkg tool from GitHub to get latest features
+
+🌍 Supports: Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora, openSUSE, and more!
+"""
+    
+    # Handle backward compatibility: if first non-flag argument is not a known command, treat as search
+    # This allows "archpkg firefox" to work the same as "archpkg search firefox"
+    if len(sys.argv) > 1:
+        first_arg_idx = 1
+        # Skip over flags to find first positional argument
+        while first_arg_idx < len(sys.argv):
+            arg = sys.argv[first_arg_idx]
+            if arg.startswith('-'):
+                first_arg_idx += 1
+                # Skip flag value if it's an option that takes a value
+                if first_arg_idx < len(sys.argv) and arg in ['--clear-cache'] and not sys.argv[first_arg_idx].startswith('-'):
+                    first_arg_idx += 1
+            else:
+                # Found a positional argument
+                break
+        
+        # If we found a positional arg and it's not a known command, inject 'search'
+        if first_arg_idx < len(sys.argv) and sys.argv[first_arg_idx] not in ['search', 'suggest', 'upgrade', '-h', '--help']:
+            sys.argv.insert(first_arg_idx, 'search')
+    
+    parser = argparse.ArgumentParser(
+        description=description,
+        epilog=epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        add_help=False  # We'll add custom help
+    )
+    
+    # Add custom help argument
+    parser.add_argument('-h', '--help', action='store_true', help='Show this help message')
+    
+    # Global arguments (must come before subparsers)
+    parser.add_argument('--debug', action='store_true', help='Enable debug logging to console')
+    parser.add_argument('--log-info', action='store_true', help='Show logging configuration and exit')
+    parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
+    parser.add_argument('--cache-stats', action='store_true', help='Show cache statistics and exit')
+    parser.add_argument('--clear-cache', choices=['all', 'aur', 'pacman', 'apt', 'dnf', 'zypper', 'flatpak', 'snap'], 
+                       help='Clear cache for specified source or all sources')
+    parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
+    
+    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    
+    # Search command (default behavior)
+    search_parser = subparsers.add_parser(
+        'search', 
+        help='Search for packages by name',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    search_parser.add_argument('query', type=str, nargs='*', help='Name of the software to search for')
+    search_parser.add_argument('--aur', action='store_true', help='Prefer AUR packages over Pacman when both are available')
+    search_parser.add_argument('--no-cache', action='store_true', help='Bypass cache and perform fresh search')
+    
+    # Suggest command
+    suggest_parser = subparsers.add_parser(
+        'suggest', 
+        help='Get app suggestions based on purpose',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    suggest_parser.add_argument('purpose', type=str, nargs='*', help='Purpose or use case (e.g., "video editing", "office")')
+    suggest_parser.add_argument('--list', action='store_true', help='List all available purposes')
+    
+    # Upgrade command
+    upgrade_parser = subparsers.add_parser(
+        'upgrade',
+        help='Upgrade archpkg tool itself from GitHub',
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Handle help manually to show custom format
+    if '--help' in sys.argv or '-h' in sys.argv:
+        parser.print_help()
+        sys.exit(0)
+    
+    args = parser.parse_args()
+    
+    # Initialize cache manager
+    cache_config = CacheConfig(enabled=not args.no_cache)
+    cache_manager = get_cache_manager(cache_config)
+    
+    # Enable debug mode if requested
+    if args.debug:
+        PackageHelperLogger.set_debug_mode(True)
+        logger.info("Debug mode enabled via command line argument")
+    
+    # Handle cache-related commands
+    if args.cache_stats:
+        stats = cache_manager.get_stats()
+        console.print(Panel(
+            f"[bold cyan]Cache Statistics:[/bold cyan]\n"
+            f"Enabled: {'[green]Yes[/green]' if stats.get('enabled') else '[red]No[/red]'}\n"
+            f"Total entries: [yellow]{stats.get('total_entries', 0)}[/yellow]\n"
+            f"Valid entries: [green]{stats.get('valid_entries', 0)}[/green]\n"
+            f"Total accesses: [blue]{stats.get('total_accesses', 0)}[/blue]\n"
+            f"Average access count: [magenta]{stats.get('avg_access_count', 0)}[/magenta]\n"
+            f"Database path: [cyan]{stats.get('db_path', 'N/A')}[/cyan]\n"
+            f"TTL: [yellow]{stats.get('config', {}).get('ttl_seconds', 0)}s[/yellow]\n"
+            f"Max entries: [yellow]{stats.get('config', {}).get('max_entries', 0)}[/yellow]\n\n"
+            f"[bold]Source breakdown:[/bold]\n" + 
+            '\n'.join([f"  {source}: {count}" for source, count in stats.get('source_breakdown', {}).items()]),
+            title="Cache Statistics",
+            border_style="blue"
+        ))
+        return
+    
+    if args.clear_cache:
+        source = None if args.clear_cache == 'all' else args.clear_cache
+        cleared_count = cache_manager.clear(source)
+        target = args.clear_cache if args.clear_cache != 'all' else 'all sources'
+        console.print(Panel(
+            f"[green]Successfully cleared {cleared_count} cache entries for {target}.[/green]",
+            title="Cache Cleared",
+            border_style="green"
+        ))
+        return
+    
+    # Show logging info if requested
+    if args.log_info:
+        from archpkg.logging_config import get_log_info
+        log_info = get_log_info()
+        console.print(Panel(
+            f"[bold cyan]Logging Configuration:[/bold cyan]\n"
+            f"File logging: {'[green]Enabled[/green]' if log_info['file_logging_enabled'] else '[red]Disabled[/red]'}\n"
+            f"Log file: [cyan]{log_info['log_file'] or 'None'}[/cyan]\n"
+            f"Log level: [yellow]{logging.getLevelName(log_info['log_level'])}[/yellow]\n"
+            f"Active handlers: [blue]{log_info['handler_count']}[/blue]",
+            title="Logging Information",
+            border_style="blue"
+        ))
+        return
+    
+    # Handle different commands
+    if args.command == 'suggest':
+        handle_suggest_command(args)
+        return
+    elif args.command == 'upgrade':
+        handle_upgrade_command()
+        return
+    elif args.command == 'search' or args.command is None:
+        # Default to search behavior for backward compatibility
+        handle_search_command(args, cache_manager)
+        return
+    else:
+        console.print(Panel(
+            "[red]Unknown command.[/red]\n\n"
+            "[bold cyan]Available commands:[/bold cyan]\n"
+            "- [cyan]archpkg search firefox[/cyan] - Search for packages by name\n"
+            "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose\n"
+            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes\n"
+            "- [cyan]archpkg upgrade[/cyan] - Upgrade archpkg tool from GitHub\n"
+            "- [cyan]archpkg --help[/cyan] - Show help information",
+            title="Invalid Command",
+            border_style="red"
+        ))
+        return
+
+
+def handle_suggest_command(args) -> None:
+    """Handle the suggest command."""
+    if args.list:
+        logger.info("Listing all available purposes")
+        list_purposes()
+        return
+    
+    if not args.purpose:
+        console.print(Panel(
+            "[red]No purpose specified.[/red]\n\n"
+            "[bold cyan]Usage:[/bold cyan]\n"
+            "- [cyan]archpkg suggest video editing[/cyan] - Get video editing apps\n"
+            "- [cyan]archpkg suggest office[/cyan] - Get office applications\n"
+            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes\n"
+            "- [cyan]archpkg suggest --help[/cyan] - Show help information",
+            title="No Purpose Specified",
+            border_style="red"
+        ))
+        return
+    
+    purpose = ' '.join(args.purpose)
+    logger.info(f"Purpose suggestion query: '{purpose}'")
+    
+    if not purpose.strip():
+        logger.warning("Empty purpose query provided by user")
+        console.print(Panel(
+            "[red]Empty purpose query provided.[/red]\n\n"
+            "[bold cyan]Usage:[/bold cyan]\n"
+            "- [cyan]archpkg suggest video editing[/cyan] - Get video editing apps\n"
+            "- [cyan]archpkg suggest office[/cyan] - Get office applications\n"
+            "- [cyan]archpkg suggest --list[/cyan] - List all available purposes",
+            title="Invalid Input",
+            border_style="red"
+        ))
+        return
+    
+    # Display suggestions
+    suggest_apps(purpose)
+
+
+def handle_search_command(args, cache_manager) -> None:
+    """Handle the search command (original functionality)."""
+    if not args.query:
+        console.print(Panel(
+            "[red]No search query provided.[/red]\n\n"
+            "[bold cyan]Usage:[/bold cyan]\n"
+            "- [cyan]archpkg search firefox[/cyan] - Search for Firefox\n"
+            "- [cyan]archpkg search visual studio code[/cyan] - Search for VS Code\n"
+            "- [cyan]archpkg search --aur firefox[/cyan] - Prefer AUR packages over Pacman\n"
+            "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose\n"
+            "- [cyan]archpkg --help[/cyan] - Show help information",
+            title="Invalid Input",
+            border_style="red"
+        ))
+        return
+    
+    query = ' '.join(args.query)
+    logger.info(f"Search query: '{query}'")
+
+    if not query.strip():
+        logger.warning("Empty search query provided by user")
+        console.print(Panel(
+            "[red]Empty search query provided.[/red]\n\n"
+            "[bold cyan]Usage:[/bold cyan]\n"
+            "- [cyan]archpkg search firefox[/cyan] - Search for Firefox\n"
+            "- [cyan]archpkg search visual studio code[/cyan] - Search for VS Code\n"
+            "- [cyan]archpkg search --aur firefox[/cyan] - Prefer AUR packages over Pacman\n"
+            "- [cyan]archpkg suggest video editing[/cyan] - Get app suggestions by purpose",
+            title="Invalid Input",
+            border_style="red"
+        ))
+        return
 
     detected = detect_distro()
     console.print(f"\nSearching for '{query}' on [cyan]{detected}[/cyan] platform...\n")
 
     results = []
     search_errors = []
+    use_cache = not args.no_cache
 
     # Search based on detected distribution
     if detected == "arch":
         try:
-            aur_results = search_aur(query)
+            logger.debug("Starting AUR search")
+            aur_results = search_aur(query, cache_manager if use_cache else None)
             results.extend(aur_results)
         except Exception as e:
             search_errors.append("AUR")
 
         try:
-            pacman_results = search_pacman(query)
+            logger.debug("Starting pacman search")
+            pacman_results = search_pacman(query, cache_manager if use_cache else None) 
             results.extend(pacman_results)
         except Exception as e:
             search_errors.append("Pacman")
 
     elif detected == "debian":
         try:
-            apt_results = search_apt(query)
+            logger.debug("Starting APT search")
+            apt_results = search_apt(query, cache_manager if use_cache else None)
             results.extend(apt_results)
         except Exception as e:
             search_errors.append("APT")
 
     elif detected == "fedora":
         try:
-            dnf_results = search_dnf(query)
+            logger.debug("Starting DNF search")
+            dnf_results = search_dnf(query, cache_manager if use_cache else None)
             results.extend(dnf_results)
         except Exception as e:
             search_errors.append("DNF")
+            
+    elif detected == "suse":
+        logger.info("Searching openSUSE-based repositories (Zypper)")
+        
+        try:
+            logger.debug("Starting Zypper search")
+            zypper_results = search_zypper(query, cache_manager if use_cache else None)
+            results.extend(zypper_results)
+            logger.info(f"Zypper search returned {len(zypper_results)} results")
+        except Exception as e:
+            handle_search_errors("zypper", e)
+            search_errors.append("Zypper")
 
     # Universal package managers
     try:
-        flatpak_results = search_flatpak(query)
+        logger.debug("Starting Flatpak search")
+        flatpak_results = search_flatpak(query, cache_manager if use_cache else None)
         results.extend(flatpak_results)
     except Exception:
         search_errors.append("Flatpak")
 
     try:
-        snap_results = search_snap(query)
+        logger.debug("Starting Snap search")
+        snap_results = search_snap(query, cache_manager if use_cache else None)
         results.extend(snap_results)
     except Exception:
         search_errors.append("Snap")
@@ -509,10 +946,17 @@ def search(
         console.print(f"[dim]Note: Some sources unavailable: {', '.join(search_errors)}[/dim]\n")
 
     if not results:
-        console.print("[red]No packages found.[/red]")
-        raise typer.Exit(1)
+        logger.info("No results found, providing GitHub fallback")
+        # Show special guidance for Brave browser on openSUSE
+        if detected == "suse" and "brave" in query.lower():
+            show_opensuse_brave_guidance()
+        github_fallback(query)
+        return
 
-    top_matches = get_top_matches(query, results, limit=limit)
+    deduplicated_results = deduplicate_packages(results, prefer_aur=args.aur)
+    logger.info(f"After deduplication: {len(deduplicated_results)} unique packages")
+
+    top_matches = get_top_matches(query, deduplicated_results, limit=5)
     if not top_matches:
         console.print("[yellow]No close matches found.[/yellow]")
         raise typer.Exit(1)
@@ -528,33 +972,50 @@ def search(
         table.add_row(str(idx), pkg, source, desc or "No description")
 
     console.print(table)
-
-@app.command()
-def install(
-    packages: List[str] = Argument(..., help="Name(s) of the package(s) to install"),
-    source: Optional[str] = Option(None, "--source", "-s", help="Package source (auto-detected if not specified)"),
-    debug: bool = Option(False, "--debug", help="Enable debug logging"),
-    track: bool = Option(True, "--track/--no-track", help="Track this installation for updates")
-) -> None:
-    """
-    Install one or more packages and optionally track them for updates.
-
-    Examples:
-        archpkg install firefox
-        archpkg install firefox vscode git
-        archpkg install firefox --source aur
-    """
-    if debug:
-        PackageHelperLogger.set_debug_mode(True)
-
-    if len(packages) == 1:
-        # Single package installation (interactive mode)
-        package_name = packages[0]
-        logger.info(f"Installing single package: {package_name}")
-
-        # Generate install command
-        command = generate_command(package_name, source)
-
+    
+    try:
+        logger.info("Starting interactive installation flow")
+        choice = input("\nSelect a package to install [1-5 or press Enter to cancel]: ")
+        
+        if not choice.strip():
+            logger.info("Installation cancelled by user (empty input)")
+            console.print("[yellow]Installation cancelled by user.[/yellow]")
+            return
+            
+        try:
+            choice = int(choice)
+            logger.debug(f"User selected choice: {choice}")
+        except ValueError:
+            logger.warning(f"Invalid user input: '{choice}'")
+            console.print(Panel(
+                "[red]Invalid input. Please enter a number.[/red]\n\n"
+                "[bold cyan]Valid options:[/bold cyan]\n"
+                "- Enter 1-5 to select a package\n"
+                "- Press Enter to cancel\n"
+                "- Use Ctrl+C to exit",
+                title="Invalid Input",
+                border_style="red"
+            ))
+            return
+            
+        if not (1 <= choice <= len(top_matches)):
+            logger.warning(f"Choice {choice} out of range (1-{len(top_matches)})")
+            console.print(Panel(
+                f"[red]Choice {choice} is out of range.[/red]\n\n"
+                f"[bold cyan]Available options:[/bold cyan] 1-{len(top_matches)}\n"
+                "- Try again with a valid number\n"
+                "- Press Enter to cancel",
+                title="Invalid Choice",
+                border_style="red"
+            ))
+            return
+            
+        selected_pkg = top_matches[choice - 1]
+        pkg, desc, source = selected_pkg
+        logger.info(f"User selected package: '{pkg}' from source '{source}'")
+        
+        command = generate_command(pkg, source)
+        
         if not command:
             console.print(f"[red]Cannot generate install command for {package_name}[/red]")
             raise typer.Exit(1)

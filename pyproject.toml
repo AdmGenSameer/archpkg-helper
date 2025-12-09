@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "archpkg"
-version = "0.1.0"
+version = "0.1.1"
 description = "Your ArchPkg CLI tool"
 authors = [{ name="AdmGenSameer", email="sameers00324@gmail.com" }]
 readme = "README.md"
@@ -18,4 +22,10 @@ dependencies = [
 github = ["GitPython"]
 
 [project.scripts]
-archpkg = "archpkg.cli:app"
+archpkg = "archpkg.cli:main"
+
+[tool.setuptools]
+packages = ["archpkg"]
+
+[tool.setuptools.package-data]
+archpkg = ["*.yaml", "*.yml", "*.json"]

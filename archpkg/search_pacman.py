@@ -3,18 +3,19 @@
 IMPROVEMENTS: Kept source name lowercase (already consistent), used config timeouts, unified exception handling."""
 
 import subprocess
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from archpkg.config import TIMEOUTS
 from archpkg.exceptions import PackageManagerNotFound, PackageSearchException, TimeoutError, ValidationError
 from archpkg.logging_config import get_logger, PackageHelperLogger
 
 logger = get_logger(__name__)
 
-def search_pacman(query: str) -> List[Tuple[str, str, str]]:
+def search_pacman(query: str, cache_manager: Optional[object] = None) -> List[Tuple[str, str, str]]:
     """Search for packages using the pacman package manager.
     
     Args:
         query: Search query string
+        cache_manager: Optional cache manager for storing/retrieving results
         
     Returns:
         List[Tuple[str, str, str]]: List of (name, description, source) tuples
@@ -30,6 +31,13 @@ def search_pacman(query: str) -> List[Tuple[str, str, str]]:
     if not query or not query.strip():
         logger.error("Empty search query provided to pacman search")
         raise ValidationError("Empty search query provided")
+
+    # Check cache first if available
+    if cache_manager:
+        cached_results = cache_manager.get(query, 'pacman')
+        if cached_results is not None:
+            logger.info(f"Retrieved {len(cached_results)} pacman results from cache")
+            return cached_results
 
     # Check if pacman is available and working
     logger.debug("Checking pacman availability")
@@ -117,6 +125,12 @@ def search_pacman(query: str) -> List[Tuple[str, str, str]]:
                 i += 1
 
         logger.info(f"Pacman search completed: {len(results)} packages found from {lines_processed} lines")
+        
+        # Cache results if cache manager is available
+        if cache_manager and results:
+            cache_manager.set(query, 'pacman', results)
+            logger.debug(f"Cached {len(results)} pacman results")
+        
         return results
 
     except subprocess.TimeoutExpired:

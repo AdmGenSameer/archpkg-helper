@@ -177,6 +177,17 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
             logger.info(f"Generated DNF command: {command}")
             return command
             
+        elif source == 'zypper':
+            logger.debug("Generating Zypper install command")
+            if not check_command_availability('zypper'):
+                logger.error("zypper command not available")
+                raise PackageManagerNotFound(
+                    "Zypper is not available. This command requires an openSUSE-based system."
+                )
+            command = f"sudo zypper install {pkg_name}"
+            logger.info(f"Generated Zypper command: {command}")
+            return command
+            
         elif source == 'snap':
             logger.debug("Generating Snap install command")
             if not check_command_availability('snap'):
@@ -192,7 +203,7 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
             logger.error(f"Unsupported package source: '{source}'")
             raise ValidationError(
                 f"Unsupported package source: '{source}'. "
-                "Supported sources: pacman, aur, flatpak, apt, dnf, snap"
+                "Supported sources: pacman, aur, flatpak, apt, dnf, zypper, snap"
             )
             
     except (PackageManagerNotFound, ValidationError):
@@ -227,7 +238,8 @@ def get_install_suggestions(source: str) -> List[str]:
             "Install Flatpak:",
             "- Arch: sudo pacman -S flatpak",
             "- Ubuntu: sudo apt install flatpak",
-            "- Fedora: sudo dnf install flatpak"
+            "- Fedora: sudo dnf install flatpak",
+            "- openSUSE: sudo zypper install flatpak"
         ],
         'apt': [
             "This package requires a Debian/Ubuntu-based system",
@@ -237,11 +249,16 @@ def get_install_suggestions(source: str) -> List[str]:
             "This package requires a Fedora/RHEL-based system", 
             "Consider using the Flatpak or Snap version if available"
         ],
+        'zypper': [
+            "This package requires an openSUSE-based system",
+            "Consider using the Flatpak or Snap version if available"
+        ],
         'snap': [
             "Install Snap:",
             "- Arch: sudo pacman -S snapd && sudo systemctl enable --now snapd",
             "- Ubuntu: sudo apt install snapd",
-            "- Fedora: sudo dnf install snapd"
+            "- Fedora: sudo dnf install snapd",
+            "- openSUSE: sudo zypper install snapd && sudo systemctl enable --now snapd"
         ]
     }
     

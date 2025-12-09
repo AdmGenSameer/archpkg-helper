@@ -1,3 +1,17 @@
+---
+
+<h2 align="center">🎯 Open Source Programmes ⭐</h2>
+<p align="center">
+  <b>This project is now OFFICIALLY accepted for:</b>
+</p>
+
+<div align="center">
+  
+![GSSoC Banner](assets/gssoc.png)
+
+</div>
+
+
 # archpkg-helper
 
 A cross-distro command-line utility that helps you search for packages and generate install commands for native package managers (pacman, AUR, apt, dnf, flatpak, snap). It aims to make discovering and installing software on Linux simpler, regardless of your distribution.
@@ -21,8 +35,10 @@ archpkg-helper is designed to work across Linux distributions. While originally 
 
 ## Features
 
+- **Purpose-based App Suggestions**: Get app recommendations based on what you want to do (e.g., "video editing", "office work", "programming")
+- **Intelligent Query Matching**: Natural language processing to understand user intent (e.g., "apps to edit videos" → video editing)
 - Search for packages and generate install commands for:
-  - pacman (Arch), AUR, apt (Debian/Ubuntu), dnf (Fedora), flatpak, snap
+  - pacman (Arch), AUR, apt (Debian/Ubuntu), dnf (Fedora), zypper (openSUSE), flatpak, snap
 - Cross-distro support (not limited to Arch)
 - Clear, readable output and errors
 - One-command setup via `install.sh`
@@ -70,6 +86,11 @@ On Arch and many other distros, system Python may be “externally managed” (P
 - Fedora:
   ```sh
   sudo dnf install pipx
+  pipx ensurepath
+  ```
+- openSUSE:
+  ```sh
+  sudo zypper install python3-pipx
   pipx ensurepath
   ```
 
@@ -136,7 +157,30 @@ This starts a web server at `http://localhost:5000` where you can:
 
 Here are some common commands for using the archpkg tool:
 
-#### 1. Search for a Package
+#### 1. Purpose-based App Suggestions (NEW!)
+
+Get app recommendations based on what you want to do:
+
+```sh
+# Get video editing apps
+archpkg suggest "video editing"
+
+# Get office applications
+archpkg suggest "office"
+
+# Get programming tools
+archpkg suggest "coding"
+
+# Natural language queries work too!
+archpkg suggest "apps to edit videos"
+archpkg suggest "programming tools"
+archpkg suggest "photo editing"
+
+# List all available purposes
+archpkg suggest --list
+```
+
+#### 2. Search for a Package
 
 Search for a package across all supported package managers:
 
@@ -148,6 +192,7 @@ archpkg search firefox
 This command will search for the `firefox` package across multiple package managers (e.g., pacman, AUR, apt).
 
 #### 2. Install Multiple Packages (Batch Installation)
+#### 3. Install a Package
 
 Install multiple packages at once with automatic validation and progress tracking:
 
@@ -163,7 +208,7 @@ This command will:
 
 Batch installation validates all packages first, then proceeds with installation. If any package fails validation, the entire batch is cancelled.
 
-#### 3. Install a Package from AUR (Arch User Repository)
+#### 4. Install a Package from AUR (Arch User Repository)
 
 To install from the AUR specifically:
 
@@ -174,7 +219,7 @@ archpkg install vscode --source aur
 
 This installs `vscode` from the AUR.
 
-#### 4. Install a Package from Pacman
+#### 5. Install a Package from Pacman
 
 To install a package directly using pacman (e.g., on Arch Linux):
 
@@ -184,6 +229,7 @@ archpkg install firefox --source pacman
 
 
 #### 5. Install from GitHub
+#### 6. Remove a Package
 
 Install software directly from GitHub repositories:
 
@@ -245,6 +291,7 @@ You can specify the package manager source using the `--source` flag. Supported 
 - aur (AUR)
 - apt (Debian/Ubuntu)
 - dnf (Fedora)
+- zypper (openSUSE)
 - flatpak (Flatpak)
 - snap (Snap)
 
@@ -422,6 +469,7 @@ The tool is structured as a **modular Python CLI** with:
   - `aur` (Arch User Repository)  
   - `apt` (Debian/Ubuntu)  
   - `dnf` (Fedora)  
+  - `zypper` (openSUSE)  
   - `flatpak`  
   - `snap`
 
@@ -476,6 +524,11 @@ Top-level layout of this repository:
 archpkg-helper/
 ├── .github/                  # issue templates and pull request template
 ├── archpkg/                  # Core Python package code (CLI and logic)
+│   ├── suggest.py            # Purpose-based app suggestions module
+│   ├── cli.py                # Main CLI interface
+│   └── ...                   # Other modules
+├── data/                     # Data files for suggestions
+│   └── purpose_mapping.yaml  # Purpose-to-apps mapping (community-driven)
 ├── install.sh                # One-command installer script (uses pipx)
 ├── pyproject.toml            # Build/metadata configuration
 ├── setup.py                  # Packaging configuration (entry points, deps)
@@ -504,14 +557,39 @@ Contributions are welcome! Please:
 5. Open a Pull Request
 
 Report bugs or request features via the [issue tracker](https://github.com/AdmGenSameer/archpkg-helper/issues).
+
+### Contributing to Purpose Mappings
+
+The purpose-based suggestions are powered by a community-driven mapping file at `data/purpose_mapping.yaml`. You can help improve the suggestions by:
+
+1. **Adding new purposes**: Add new categories of applications (e.g., "security", "education", "gaming")
+2. **Adding more apps**: Suggest additional applications for existing purposes
+3. **Improving descriptions**: Add better descriptions for applications
+4. **Adding synonyms**: Help improve the natural language processing by adding more phrase mappings
+
+To contribute:
+1. Edit `data/purpose_mapping.yaml` to add your suggestions
+2. Test your changes with `python -m archpkg.cli suggest "your-purpose"`
+3. Submit a Pull Request with your improvements
+
+Example contribution:
+```yaml
+# Add to data/purpose_mapping.yaml
+security:
+  - firejail
+  - tor
+  - keepassxc
+  - veracrypt
+  - wireshark
+```
 ---
 
 ## 🛣️ Roadmap
 
 Here’s what’s planned for future releases of **archpkg-helper**:
 
-- 🔧 **Add support for `zypper` (openSUSE)**  
-  Extend backend adapters to cover openSUSE users.
+- ✅ **Add support for `zypper` (openSUSE)** - COMPLETED  
+  Extended backend adapters to cover openSUSE users.
 
 - ⚡ **Caching layer for faster searches**  
   Improve performance by reducing repeated lookups across package managers.
@@ -523,6 +601,15 @@ Here’s what’s planned for future releases of **archpkg-helper**:
   Build a graphical user interface on top of the CLI for desktop users who prefer point-and-click.
   
 ---
+<h2 align="center">💬 Join Our Community on Discord</h2>
+
+
+<p align="center">
+  <a href="https://discord.gg/bN7ycNdCR">
+    <img src="assets/joinDiscordIcon.png" alt="Admin Discord" width="500"/>
+  </a>
+</p>
+
 
 ## License
 

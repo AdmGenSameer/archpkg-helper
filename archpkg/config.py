@@ -7,6 +7,7 @@ TIMEOUTS = {
     'pacman': 30,
     'apt': 30,
     'dnf': 45,  # DNF can be slower
+    'zypper': 45,  # Zypper can be slower like DNF
     'flatpak': 30,
     'snap': 30,
     'command_check': 5
@@ -18,7 +19,7 @@ LOW_PRIORITY_KEYWORDS = ["extension", "plugin", "helper", "daemon", "patch", "th
 BOOST_KEYWORDS = ["editor", "browser", "ide", "official", "gui", "android", "studio", "stable", "canary", "beta"]
 
 # Supported platforms
-SUPPORTED_PLATFORMS = ["arch", "debian", "ubuntu", "linuxmint", "fedora", "manjaro"]
+SUPPORTED_PLATFORMS = ["arch", "debian", "ubuntu", "linuxmint", "fedora", "manjaro", "opensuse", "suse"]
 
 # Distribution mapping
 DISTRO_MAP = {
@@ -36,7 +37,12 @@ DISTRO_MAP = {
     "rhel": "fedora",
     "centos": "fedora", 
     "rocky": "fedora",
-    "alma": "fedora"
+    "alma": "fedora",
+    "opensuse": "suse",
+    "opensuse-leap": "suse",
+    "opensuse-tumbleweed": "suse",
+    "suse": "suse",
+    "sles": "suse"
 }
 
 # AUR helpers in order of preference
@@ -97,4 +103,31 @@ PERFORMANCE_CONFIG = {
     'log_slow_operations_threshold': 5.0,  # seconds
     'enable_memory_logging': False,
     'enable_detailed_tracing': False
+}
+
+# Cache configuration settings
+CACHE_CONFIG = {
+    'enabled': True,
+    'ttl_seconds': 24 * 60 * 60,  # 24 hours default
+    'max_entries': 1000,
+    'cleanup_interval': 3600,  # 1 hour
+    'cache_dir': None,  # Auto-detect using XDG_CACHE_HOME
+    'db_name': 'cache.db',
+    
+    # Privacy settings
+    'respect_privacy': True,
+    'exclude_sensitive_queries': True,
+    'max_description_length': 500,
+    
+    # Performance settings
+    'enable_compression': False,  # Future feature
+    'batch_size': 100,  # For bulk operations
+    'connection_timeout': 5.0,  # Database connection timeout
+}
+
+# Cache-related timeouts (separate from search timeouts)
+CACHE_TIMEOUTS = {
+    'db_connection': 5.0,
+    'cleanup_operation': 30.0,
+    'stats_query': 10.0,
 }

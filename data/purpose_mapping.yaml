@@ -1,0 +1,111 @@
+# Purpose-based App Suggestions for archpkg
+# This file maps purposes to relevant applications available in various package managers
+# Contributors can add new purposes and applications through Pull Requests
+
+video editing:
+  - kdenlive
+  - shotcut
+  - openshot
+  - obs-studio
+  - davinci-resolve
+  - blender
+
+office:
+  - libreoffice-fresh
+  - onlyoffice-bin
+  - wps-office
+  - calligra
+
+music:
+  - audacity
+  - vlc
+  - lmms
+  - ardour
+  - reaper
+  - musescore
+
+coding:
+  - vscode
+  - neovim
+  - intellij-idea-community
+  - android-studio
+  - sublime-text
+  - atom
+  - codeblocks
+  - qtcreator
+
+graphics:
+  - gimp
+  - inkscape
+  - krita
+  - darktable
+  - rawtherapee
+  - blender
+
+gaming:
+  - steam
+  - lutris
+  - wine
+  - playonlinux
+  - retroarch
+
+browsing:
+  - firefox
+  - chromium
+  - brave-bin
+  - vivaldi
+  - opera
+
+communication:
+  - discord
+  - telegram-desktop
+  - signal-desktop
+  - slack-desktop
+  - zoom
+  - teams
+
+development:
+  - git
+  - docker
+  - docker-compose
+  - nodejs
+  - python
+  - go
+  - rust
+  - clang
+  - gcc
+
+system:
+  - htop
+  - neofetch
+  - timeshift
+  - gparted
+  - gnome-disk-utility
+  - system-monitor
+
+text editing:
+  - vim
+  - emacs
+  - nano
+  - micro
+  - kate
+  - gedit
+
+media:
+  - vlc
+  - mpv
+  - smplayer
+  - rhythmbox
+  - spotify
+  - youtube-dl
+
+utilities:
+  - curl
+  - wget
+  - unzip
+  - zip
+  - tar
+  - rsync
+  - tree
+  - bat
+  - exa

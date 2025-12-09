@@ -4,18 +4,19 @@ IMPROVEMENTS: Standardized source name to lowercase, used config timeouts, unifi
 
 import subprocess
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from archpkg.config import TIMEOUTS
 from archpkg.exceptions import PackageManagerNotFound, PackageSearchException, TimeoutError, ValidationError, NetworkError
 from archpkg.logging_config import get_logger, PackageHelperLogger
 
 logger = get_logger(__name__)
 
-def search_dnf(query: str) -> List[Tuple[str, str, str]]:
+def search_dnf(query: str, cache_manager: Optional[object] = None) -> List[Tuple[str, str, str]]:
     """Search for packages using DNF package manager.
     
     Args:
         query: Search query string
+        cache_manager: Optional cache manager for storing/retrieving results
         
     Returns:
         List[Tuple[str, str, str]]: List of (name, description, source) tuples
@@ -32,6 +33,13 @@ def search_dnf(query: str) -> List[Tuple[str, str, str]]:
     if not query or not query.strip():
         logger.error("Empty search query provided to DNF search")
         raise ValidationError("Empty search query provided")
+
+    # Check cache first if available
+    if cache_manager:
+        cached_results = cache_manager.get(query, 'dnf')
+        if cached_results is not None:
+            logger.info(f"Retrieved {len(cached_results)} DNF results from cache")
+            return cached_results
 
     # Check if DNF is available and working
     logger.debug("Checking DNF availability")
@@ -137,6 +145,12 @@ def search_dnf(query: str) -> List[Tuple[str, str, str]]:
                         logger.debug(f"Found DNF package: {name}")
 
         logger.info(f"DNF search completed: {len(packages)} packages found from {lines_processed} lines")
+        
+        # Cache results if cache manager is available
+        if cache_manager and packages:
+            cache_manager.set(query, 'dnf', packages)
+            logger.debug(f"Cached {len(packages)} DNF results")
+        
         return packages
 
     except subprocess.TimeoutExpired:

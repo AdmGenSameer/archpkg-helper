@@ -4,18 +4,19 @@ IMPROVEMENTS: Standardized source name to lowercase, used config timeouts, impro
 
 import requests
 import json
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from archpkg.config import TIMEOUTS
 from archpkg.exceptions import NetworkError, TimeoutError, ValidationError, PackageSearchException
 from archpkg.logging_config import get_logger, PackageHelperLogger
 
 logger = get_logger(__name__)
 
-def search_aur(query: str) -> List[Tuple[str, str, str]]:
+def search_aur(query: str, cache_manager: Optional[object] = None) -> List[Tuple[str, str, str]]:
     """Search for packages in the Arch User Repository (AUR).
     
     Args:
         query: Search query string
+        cache_manager: Optional cache manager for storing/retrieving results
         
     Returns:
         List[Tuple[str, str, str]]: List of (name, description, source) tuples
@@ -32,6 +33,13 @@ def search_aur(query: str) -> List[Tuple[str, str, str]]:
     if not query or not query.strip():
         logger.error("Empty search query provided to AUR search")
         raise ValidationError("Empty search query provided")
+    
+    # Check cache first if available
+    if cache_manager:
+        cached_results = cache_manager.get(query, 'aur')
+        if cached_results is not None:
+            logger.info(f"Retrieved {len(cached_results)} AUR results from cache")
+            return cached_results
     
     # Construct AUR RPC search API URL
     url = f"https://aur.archlinux.org/rpc/?v=5&type=search&arg={query.strip()}"
@@ -80,6 +88,12 @@ def search_aur(query: str) -> List[Tuple[str, str, str]]:
         
         logger.info(f"AUR search completed: {len(processed_results)} valid packages found")
         # IMPROVED: Standardized source name to lowercase
+        
+        # Cache results if cache manager is available
+        if cache_manager and processed_results:
+            cache_manager.set(query, 'aur', processed_results)
+            logger.debug(f"Cached {len(processed_results)} AUR results")
+        
         return processed_results
     
     except requests.exceptions.ConnectionError as e:
