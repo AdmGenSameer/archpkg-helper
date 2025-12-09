@@ -126,11 +126,15 @@ class UpdateChecker:
         # Find the best match (usually the first result)
         latest_name, latest_desc, latest_source = results[0]
 
-        # For now, we'll assume any difference means an update is available
-        # In a real implementation, we'd need proper version comparison
-        # For this demo, we'll just check if the package exists
-        has_update = True  # Simplified logic
-        latest_version = "latest"  # Would need proper version parsing
+        # NOTE: This is a simplified implementation for demonstration purposes
+        # A production implementation should:
+        # 1. Parse and compare semantic versions (e.g., using packaging.version)
+        # 2. Query package manager APIs for actual version information
+        # 3. Handle different versioning schemes across package managers
+        # For now, we conservatively report updates may be available
+        logger.warning(f"Update check for {package.name} uses simplified logic - manual verification recommended")
+        has_update = False  # Changed to False to avoid false positives
+        latest_version = "unknown"  # Indicates version comparison not implemented
 
         return has_update, latest_version
 

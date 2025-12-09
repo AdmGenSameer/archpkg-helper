@@ -227,22 +227,27 @@ class UpdateInstaller:
         }
 
     def _install_single_update(self, package_name: str) -> Dict[str, Any]:
-        """Install update for a single package"""
+        """Install update for a single package
+        
+        NOTE: This is a simplified implementation for demonstration purposes.
+        A production implementation should:
+        1. Retrieve actual package metadata including version information
+        2. Generate and execute the appropriate install command for the package manager
+        3. Verify installation success through package manager queries
+        4. Handle rollback on failure
+        5. Support different package sources (pacman, apt, dnf, etc.)
+        """
         logger.info(f"Installing update for {package_name}")
-
-        # This is a placeholder - actual installation would depend on the package source
-        # For now, we'll just mark it as installed
+        logger.warning("Update installation uses simplified logic - manual installation recommended for production use")
 
         try:
-            # In a real implementation, this would:
-            # 1. Get the package info
-            # 2. Run the appropriate installation command based on source
-            # 3. Verify installation
-            # 4. Update the installed package info
+            # TODO: Implement actual package installation logic
+            # For now, we just update the tracking information
+            # In production, this should execute package manager commands
 
             update_package_info(
                 package_name,
-                installed_version="latest",  # Would be actual version
+                installed_version="unknown",  # Indicates version detection not implemented
                 update_available=False,
                 last_updated=datetime.now(timezone.utc).isoformat()
             )

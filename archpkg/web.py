@@ -13,8 +13,10 @@ from archpkg.search_snap import search_snap
 from archpkg.search_apt import search_apt
 from archpkg.search_dnf import search_dnf
 from archpkg.command_gen import generate_command
+from archpkg.logging_config import get_logger
 
 app = Flask(__name__)
+logger = get_logger(__name__)
 
 @app.route('/')
 def home():
@@ -46,8 +48,8 @@ def api_search():
                 'manager': source,
                 'command': command or 'Command not available'
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Pacman search failed for query '{query}': {e}")
 
     try:
         aur_results = search_aur(query)
@@ -59,8 +61,8 @@ def api_search():
                 'manager': source,
                 'command': command or 'Command not available'
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"AUR search failed for query '{query}': {e}")
 
     try:
         flatpak_results = search_flatpak(query)
@@ -72,8 +74,8 @@ def api_search():
                 'manager': source,
                 'command': command or 'Command not available'
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Flatpak search failed for query '{query}': {e}")
 
     try:
         snap_results = search_snap(query)
@@ -85,8 +87,8 @@ def api_search():
                 'manager': source,
                 'command': command or 'Command not available'
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Snap search failed for query '{query}': {e}")
 
     try:
         apt_results = search_apt(query)
@@ -98,8 +100,8 @@ def api_search():
                 'manager': source,
                 'command': command or 'Command not available'
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"APT search failed for query '{query}': {e}")
 
     try:
         dnf_results = search_dnf(query)
@@ -111,8 +113,8 @@ def api_search():
                 'manager': source,
                 'command': command or 'Command not available'
             })
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"DNF search failed for query '{query}': {e}")
 
     # Sort by relevance (simple: prefer exact matches, then shorter names)
     results.sort(key=lambda x: (x['name'].lower().find(query.lower()), len(x['name'])))

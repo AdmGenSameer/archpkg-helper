@@ -377,8 +377,8 @@ def handle_install_command(args) -> None:
             sys.exit(1)
         return
     
-    # Determine tracking preference
-    should_track = args.track and not args.no_track
+    # Determine tracking preference (track is default, no_track overrides it)
+    should_track = not args.no_track
     
     # Normal package installation
     detected = detect_distro()

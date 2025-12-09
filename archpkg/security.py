@@ -169,26 +169,33 @@ class PackageSecurityValidator:
         }
 
         # Dangerous command patterns to block
+        # NOTE: This is a basic pattern matching implementation
+        # A production system should use:
+        # 1. Proper shell command parsing
+        # 2. Regex patterns for more flexible matching
+        # 3. Whitelist of allowed commands rather than blacklist
+        # 4. Integration with security scanning tools
+        import re
+        
         dangerous_patterns = [
-            'rm -rf /',
-            'rm -rf /*',
-            'dd if=',
-            'mkfs',
-            'fdisk',
-            'format',
-            'wget.*|.*curl.*|.*bash',
-            'chmod.*777',
-            'chown.*root',
-            'sudo.*su',
-            'passwd',
-            'shadow',
-            'sudoers'
+            r'rm\s+-rf\s+/',  # Recursive delete from root
+            r'dd\s+if=',  # Disk operations
+            r'mkfs',  # Filesystem formatting
+            r'fdisk',  # Disk partitioning
+            r'format',  # Formatting operations
+            r'wget.*\|.*bash',  # Pipe to bash
+            r'curl.*\|.*bash',  # Pipe to bash
+            r'chmod\s+777',  # Overly permissive permissions
+            r'chown.*root',  # Change ownership to root
+            r'passwd',  # Password changes
+            r'shadow',  # Shadow file access
+            r'sudoers',  # Sudoers file modification
         ]
 
         command_lower = install_command.lower()
 
         for pattern in dangerous_patterns:
-            if pattern in command_lower:
+            if re.search(pattern, command_lower):
                 result["blocked"] = True
                 result["reason"] = f"Command contains dangerous pattern: {pattern}"
                 logger.error(f"Blocked dangerous install command for {package_name}: {pattern}")
