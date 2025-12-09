@@ -1044,27 +1044,9 @@ def handle_search_command(args, cache_manager) -> None:
         except KeyboardInterrupt:
             console.print("\n[yellow]Installation cancelled.[/yellow]")
             raise typer.Exit(1)
-    else:
-        # Multiple packages - use batch installation
-        logger.info(f"Installing multiple packages: {packages}")
-
-        # For batch installation, we don't support custom source specification
-        # as it would be complex to handle different sources for different packages
-        if source:
-            console.print("[yellow]Warning: --source flag ignored for batch installation. Using auto-detection.[/yellow]")
-
-        # Use the existing batch installation function
-        batch_install_packages(packages)
-
-        # Track all successfully installed packages if requested
-        if track:
-            detected = detect_distro()
-            for package_name in packages:
-                try:
-                    add_installed_package(package_name, detected, "latest")
-                except Exception as e:
-                    logger.warning(f"Failed to track package {package_name}: {e}")
-            console.print(f"[dim]Successfully installed packages tracked for updates[/dim]")
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Installation cancelled.[/yellow]")
+        raise typer.Exit(1)
 
 @app.command()
 def update(
