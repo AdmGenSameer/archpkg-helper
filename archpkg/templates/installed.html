@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Packages - ArchPkg Helper</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .container {
+            max-width: 1000px;
+        }
+        .package-card {
+            transition: all 0.3s ease;
+        }
+        .package-card:hover {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .update-available {
+            background-color: #fff3cd;
+        }
+        .loading {
+            display: none;
+        }
+        .empty-state {
+            text-align: center;
+            padding: 3rem 0;
+        }
+    </style>
+</head>
+<body class="bg-light">
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-box-open me-2"></i>
+                ArchPkg Helper
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/search">Search Packages</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/installed">My Packages</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://github.com/AdmGenSameer/archpkg-helper" target="_blank">
+                            <i class="fab fa-github me-1"></i>GitHub
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <div class="text-center mb-5">
+            <h1 class="display-5 fw-bold mb-3">
+                <i class="fas fa-cube me-3"></i>
+                My Packages
+            </h1>
+            <p class="lead text-muted">
+                Manage packages tracked by ArchPkg Helper
+            </p>
+        </div>
+
+        <div class="card shadow mb-4">
+            <div class="card-body p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0">Installed Packages</h5>
+                    <div>
+                        <button class="btn btn-sm btn-outline-primary me-2" id="refreshBtn">
+                            <i class="fas fa-sync-alt me-1"></i>Refresh
+                        </button>
+                        <button class="btn btn-sm btn-warning" id="checkUpdatesBtn">
+                            <i class="fas fa-arrow-up me-1"></i>Check Updates
+                        </button>
+                    </div>
+                </div>
+
+                <div id="loading" class="text-center loading">
+                    <div class="spinner-border text-primary me-2" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span>Loading packages...</span>
+                </div>
+
+                <div id="packagesList" class="list-group" style="display: none;">
+                    <!-- Packages will be populated here -->
+                </div>
+
+                <div id="emptyState" class="empty-state" style="display: none;">
+                    <i class="fas fa-inbox text-muted" style="font-size: 3rem;"></i>
+                    <h4 class="mt-3 text-muted">No packages tracked yet</h4>
+                    <p class="text-muted">Use the search feature to find and install packages</p>
+                    <a href="/search" class="btn btn-primary mt-2">
+                        <i class="fas fa-search me-2"></i>Search Packages
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Updates Summary -->
+        <div id="updatesSummary" class="alert alert-info" style="display: none;">
+            <h5 class="alert-heading">
+                <i class="fas fa-arrow-up me-2"></i>Updates Available
+            </h5>
+            <p id="updatesMessage" class="mb-0"></p>
+            <button class="btn btn-sm btn-warning mt-2" id="installUpdatesBtn">
+                <i class="fas fa-download me-1"></i>Install All Updates
+            </button>
+        </div>
+    </div>
+
+    <!-- Package Item Template -->
+    <template id="packageTemplate">
+        <div class="list-group-item list-group-item-action package-card" role="button">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                    <h6 class="mb-1 fw-bold">
+                        <span class="package-name"></span>
+                        <span class="badge package-manager ms-2"></span>
+                    </h6>
+                    <p class="mb-1 text-muted small">
+                        <span class="install-date"></span>
+                    </p>
+                    <div class="update-info" style="display: none;">
+                        <small class="text-warning">
+                            <i class="fas fa-exclamation-circle me-1"></i>
+                            <span class="update-text"></span>
+                        </small>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-sm btn-outline-danger remove-btn">
+                        <i class="fas fa-trash me-1"></i>Remove
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <script>
+        const refreshBtn = document.getElementById('refreshBtn');
+        const checkUpdatesBtn = document.getElementById('checkUpdatesBtn');
+        const packagesList = document.getElementById('packagesList');
+        const emptyState = document.getElementById('emptyState');
+        const loading = document.getElementById('loading');
+        const packageTemplate = document.getElementById('packageTemplate');
+
+        // Load packages on page load
+        loadPackages();
+
+        refreshBtn.addEventListener('click', loadPackages);
+
+        async function loadPackages() {
+            loading.style.display = 'block';
+            packagesList.style.display = 'none';
+            emptyState.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/installed-packages');
+                const data = await response.json();
+
+                loading.style.display = 'none';
+
+                if (data.packages && data.packages.length > 0) {
+                    displayPackages(data.packages);
+                } else {
+                    emptyState.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error loading packages:', error);
+                loading.style.display = 'none';
+                emptyState.style.display = 'block';
+            }
+        }
+
+        function displayPackages(packages) {
+            packagesList.innerHTML = '';
+
+            packages.forEach(pkg => {
+                const clone = packageTemplate.content.cloneNode(true);
+                const item = clone.querySelector('.list-group-item');
+
+                clone.querySelector('.package-name').textContent = pkg.name || 'Unknown';
+                const badge = clone.querySelector('.package-manager');
+                badge.textContent = pkg.source || 'unknown';
+
+                // Set badge color
+                const manager = (pkg.source || '').toLowerCase();
+                if (manager.includes('pacman')) badge.classList.add('bg-warning', 'text-dark');
+                else if (manager.includes('aur')) badge.classList.add('bg-danger');
+                else if (manager.includes('apt')) badge.classList.add('bg-success');
+                else if (manager.includes('dnf')) badge.classList.add('bg-info', 'text-dark');
+                else if (manager.includes('flatpak')) badge.classList.add('bg-primary');
+                else if (manager.includes('snap')) badge.classList.add('bg-secondary');
+                else if (manager.includes('github')) badge.classList.add('bg-dark');
+                else badge.classList.add('bg-secondary');
+
+                // Format install date
+                const installDate = new Date(pkg.install_date);
+                clone.querySelector('.install-date').textContent = 
+                    `Installed: ${installDate.toLocaleDateString()} at ${installDate.toLocaleTimeString()}`;
+
+                // Show update available if applicable
+                if (pkg.update_available) {
+                    const updateDiv = clone.querySelector('.update-info');
+                    updateDiv.style.display = 'block';
+                    clone.querySelector('.update-text').textContent = 
+                        `Update available: ${pkg.available_version || 'Check version'}`;
+                    item.classList.add('update-available');
+                }
+
+                // Remove button
+                const removeBtn = clone.querySelector('.remove-btn');
+                removeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (confirm(`Remove ${pkg.name} from tracking?`)) {
+                        removePackage(pkg.name);
+                    }
+                });
+
+                packagesList.appendChild(clone);
+            });
+
+            packagesList.style.display = 'block';
+        }
+
+        checkUpdatesBtn.addEventListener('click', async function() {
+            checkUpdatesBtn.disabled = true;
+            checkUpdatesBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Checking...';
+
+            try {
+                const packages = Array.from(packagesList.querySelectorAll('.package-name'))
+                    .map(el => el.textContent);
+
+                const response = await fetch('/api/check-updates', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({packages: packages})
+                });
+
+                const data = await response.json();
+
+                if (data.updates_available && data.updates_available.length > 0) {
+                    showUpdatesSummary(data.updates_available);
+                } else {
+                    alert('All packages are up to date!');
+                }
+            } catch (error) {
+                console.error('Update check failed:', error);
+                alert('Error checking updates');
+            }
+
+            checkUpdatesBtn.disabled = false;
+            checkUpdatesBtn.innerHTML = '<i class="fas fa-arrow-up me-1"></i>Check Updates';
+        });
+
+        function showUpdatesSummary(updates) {
+            const summary = document.getElementById('updatesSummary');
+            const message = document.getElementById('updatesMessage');
+            message.innerHTML = `<strong>${updates.length}</strong> package${updates.length !== 1 ? 's' : ''} have updates available`;
+            summary.style.display = 'block';
+        }
+
+        document.getElementById('installUpdatesBtn').addEventListener('click', function() {
+            alert('Update installation coming soon!');
+        });
+
+        async function removePackage(packageName) {
+            // In a real implementation, this would call an API endpoint
+            console.log(`Removing package: ${packageName}`);
+            loadPackages();
+        }
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

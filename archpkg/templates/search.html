@@ -8,7 +8,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         .search-container {
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
         }
         .result-card {
@@ -23,6 +23,16 @@
         }
         .loading {
             display: none;
+        }
+        .github-result {
+            border-left: 4px solid #333;
+        }
+        .install-btn {
+            cursor: pointer;
+        }
+        .install-status {
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
         }
     </style>
 </head>
@@ -43,6 +53,9 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link active" href="/search">Search Packages</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/installed">My Packages</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="https://github.com/AdmGenSameer/archpkg-helper" target="_blank">
@@ -99,10 +112,50 @@
             <div id="noResults" class="text-center" style="display: none;">
                 <i class="fas fa-search text-muted" style="font-size: 3rem;"></i>
                 <h4 class="mt-3 text-muted">No packages found</h4>
-                <p class="text-muted">Try a different search term or check your spelling</p>
+                <p class="text-muted">Try searching on GitHub for source code</p>
+                <button class="btn btn-outline-secondary mt-2" id="githubFallbackBtn" style="display: none;">
+                    <i class="fab fa-github me-2"></i>Search on GitHub
+                </button>
+            </div>
+
+            <div id="githubResults" class="results-container" style="display: none;">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3 class="mb-0">GitHub Results</h3>
+                    <span id="githubResultCount" class="badge bg-dark">0 results</span>
+                </div>
+                <div id="githubResultsList" class="row g-3">
+                    <!-- GitHub results will be populated here -->
+                </div>
             </div>
         </div>
     </div>
+
+    <!-- Repository Result Template -->
+    <template id="githubResultTemplate">
+        <div class="col-md-6">
+            <div class="card result-card github-result h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="card-title mb-0 fw-bold"></h6>
+                        <span class="badge bg-dark">GitHub</span>
+                    </div>
+                    <p class="card-text text-muted small mb-2"></p>
+                    <div class="mb-2">
+                        <small class="text-muted">
+                            <i class="fas fa-star me-1"></i><span class="stars"></span> |
+                            <i class="fas fa-code me-1"></i><span class="language"></span>
+                        </small>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-sm btn-primary github-install-btn" title="Install from source">
+                            <i class="fas fa-download me-1"></i>Install from Source
+                        </button>
+                    </div>
+                    <div class="install-status"></div>
+                </div>
+            </div>
+        </div>
+    </template>
 
     <!-- Result Template -->
     <template id="resultTemplate">
@@ -114,22 +167,31 @@
                         <span class="badge package-manager-badge"></span>
                     </div>
                     <p class="card-text text-muted small mb-3"></p>
+                    <div class="d-grid gap-2 mb-2">
+                        <button class="btn btn-sm btn-success install-btn" title="Install package">
+                            <i class="fas fa-download me-1"></i>Install
+                        </button>
+                    </div>
                     <div class="d-flex justify-content-between align-items-center">
-                        <code class="command-text small text-break"></code>
-                        <button class="btn btn-sm btn-outline-primary copy-btn" title="Copy command">
+                        <code class="command-text small text-break" style="font-size: 0.7rem;"></code>
+                        <button class="btn btn-sm btn-outline-primary copy-btn ms-2" title="Copy command">
                             <i class="fas fa-copy"></i>
                         </button>
                     </div>
+                    <div class="install-status"></div>
                 </div>
             </div>
         </div>
     </template>
 
     <script>
+        let lastQuery = '';
+
         document.getElementById('searchForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const query = document.getElementById('searchInput').value.trim();
             if (query) {
+                lastQuery = query;
                 searchPackages(query);
             }
         });
@@ -138,6 +200,7 @@
             const loading = document.getElementById('loading');
             const results = document.getElementById('results');
             const noResults = document.getElementById('noResults');
+            const githubResults = document.getElementById('githubResults');
             const resultsList = document.getElementById('resultsList');
             const resultCount = document.getElementById('resultCount');
 
@@ -145,6 +208,7 @@
             loading.style.display = 'block';
             results.style.display = 'none';
             noResults.style.display = 'none';
+            githubResults.style.display = 'none';
 
             try {
                 const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
@@ -155,7 +219,12 @@
                 if (data.results && data.results.length > 0) {
                     displayResults(data.results);
                 } else {
+                    // Show GitHub fallback option
+                    document.getElementById('githubFallbackBtn').style.display = 'inline-block';
                     noResults.style.display = 'block';
+                    
+                    // Auto-search GitHub
+                    searchGitHub(query);
                 }
             } catch (error) {
                 console.error('Search failed:', error);
@@ -163,6 +232,23 @@
                 noResults.style.display = 'block';
             }
         }
+
+        async function searchGitHub(query) {
+            try {
+                const response = await fetch(`/api/github-search?q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+
+                if (data.results && data.results.length > 0) {
+                    displayGitHubResults(data.results);
+                }
+            } catch (error) {
+                console.error('GitHub search failed:', error);
+            }
+        }
+
+        document.getElementById('githubFallbackBtn').addEventListener('click', function() {
+            searchGitHub(lastQuery);
+        });
 
         function displayResults(results) {
             const resultsDiv = document.getElementById('results');
@@ -184,7 +270,7 @@
 
                 // Set badge color based on package manager
                 const badge = card.querySelector('.package-manager-badge');
-                const manager = result.manager || '';
+                const manager = (result.manager || '').toLowerCase();
                 if (manager.includes('pacman')) badge.classList.add('bg-warning', 'text-dark');
                 else if (manager.includes('aur')) badge.classList.add('bg-danger');
                 else if (manager.includes('apt')) badge.classList.add('bg-success');
@@ -192,6 +278,12 @@
                 else if (manager.includes('flatpak')) badge.classList.add('bg-primary');
                 else if (manager.includes('snap')) badge.classList.add('bg-secondary');
                 else badge.classList.add('bg-secondary');
+
+                // Install button
+                const installBtn = card.querySelector('.install-btn');
+                installBtn.addEventListener('click', async function() {
+                    await installPackage(result.name, result.manager, installBtn);
+                });
 
                 // Copy button functionality
                 const copyBtn = card.querySelector('.copy-btn');
@@ -209,7 +301,109 @@
                 resultsList.appendChild(clone);
             });
 
-            results.style.display = 'block';
+            resultsDiv.style.display = 'block';
+        }
+
+        function displayGitHubResults(results) {
+            const githubDiv = document.getElementById('githubResults');
+            const resultsList = document.getElementById('githubResultsList');
+            const resultCount = document.getElementById('githubResultCount');
+            const template = document.getElementById('githubResultTemplate');
+
+            resultsList.innerHTML = '';
+            resultCount.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+
+            results.forEach(result => {
+                const clone = template.content.cloneNode(true);
+                const card = clone.querySelector('.card');
+
+                card.querySelector('.card-title').textContent = result.name || 'Unknown Project';
+                card.querySelector('.card-text').textContent = result.description || 'No description available';
+                card.querySelector('.stars').textContent = result.stars || 0;
+                card.querySelector('.language').textContent = result.language || 'Unknown';
+
+                // Install from source button
+                const installBtn = card.querySelector('.github-install-btn');
+                installBtn.addEventListener('click', async function() {
+                    await installFromGitHub(result.url, result.name, installBtn);
+                });
+
+                resultsList.appendChild(clone);
+            });
+
+            githubDiv.style.display = 'block';
+        }
+
+        async function installPackage(packageName, manager, button) {
+            const originalHTML = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Installing...';
+
+            try {
+                const response = await fetch('/api/install', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name: packageName, manager: manager})
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    button.innerHTML = '<i class="fas fa-check me-1"></i>Tracked!';
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-info');
+                    
+                    // Show status message
+                    const statusDiv = button.parentElement.nextElementSibling?.nextElementSibling || button.parentElement.querySelector('.install-status');
+                    if (statusDiv) {
+                        statusDiv.innerHTML = `<div class="alert alert-info mt-2 mb-0">✓ Package marked for installation</div>`;
+                    }
+                } else {
+                    alert('Error: ' + (data.error || 'Installation failed'));
+                    button.innerHTML = originalHTML;
+                }
+            } catch (error) {
+                console.error('Installation failed:', error);
+                alert('Installation failed: ' + error.message);
+                button.innerHTML = originalHTML;
+            }
+            button.disabled = false;
+        }
+
+        async function installFromGitHub(repoUrl, packageName, button) {
+            const originalHTML = button.innerHTML;
+            button.disabled = true;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Installing...';
+
+            try {
+                const response = await fetch('/api/github-install', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({url: repoUrl, name: packageName})
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    button.innerHTML = '<i class="fas fa-check me-1"></i>Installed!';
+                    button.classList.remove('btn-primary');
+                    button.classList.add('btn-success');
+                    
+                    // Show status message
+                    const statusDiv = button.parentElement.nextElementSibling;
+                    if (statusDiv) {
+                        statusDiv.innerHTML = `<div class="alert alert-success mt-2 mb-0">✓ Installation completed</div>`;
+                    }
+                } else {
+                    alert('Error: ' + (data.error || 'Installation failed'));
+                    button.innerHTML = originalHTML;
+                }
+            } catch (error) {
+                console.error('GitHub installation failed:', error);
+                alert('Installation failed: ' + error.message);
+                button.innerHTML = originalHTML;
+            }
+            button.disabled = false;
         }
     </script>
 
