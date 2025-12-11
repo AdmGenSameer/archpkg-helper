@@ -4,6 +4,7 @@
 
 import sys
 import os
+import re
 import webbrowser
 import threading
 import time
@@ -60,6 +61,21 @@ def normalize_query(query: str) -> List[str]:
         List of query variations to try
     """
     variations = [query]
+
+    # For RPM/DEB filenames: strip extension and version/arch to get base name
+    # Example: gimp-3.0.4-8.fc43.x86_64.rpm -> gimp
+    stripped_ext = re.sub(r"\.(rpm|deb)$", "", query)
+    if stripped_ext != query:
+        variations.append(stripped_ext)
+        logger.debug(f"Added no-extension variation: '{stripped_ext}'")
+
+    # If pattern looks like name-version-arch, strip version/arch segment
+    match_name_only = re.match(r"^([A-Za-z0-9+_.-]+?)-\d", stripped_ext)
+    if match_name_only:
+        base_name = match_name_only.group(1)
+        if base_name not in variations:
+            variations.append(base_name)
+            logger.debug(f"Added base-name variation: '{base_name}'")
     
     # Add hyphenated version: "jellyfin media player" -> "jellyfin-media-player"
     if ' ' in query:
@@ -905,6 +921,9 @@ def search(
     query_variations = normalize_query(query_str)
     logger.info(f"Searching with {len(query_variations)} query variations: {query_variations}")
 
+    # Use the shortest variation for external sources (pkgs.org) to improve hit rate
+    pkgs_org_query = min(query_variations, key=len)
+
     results = []
     search_errors = []
     use_cache = not no_cache
@@ -917,7 +936,7 @@ def search(
         nonlocal pkgs_org_results
         try:
             logger.debug("Background pkgs.org search started")
-            pkgs_org_results = search_pkgs_org(query_str, detected, limit=10)
+            pkgs_org_results = search_pkgs_org(pkgs_org_query, detected, limit=10)
             logger.debug(f"Background pkgs.org search completed: {len(pkgs_org_results)} results")
         except Exception as e:
             logger.debug(f"Background pkgs.org search failed: {e}")
