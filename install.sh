@@ -8,7 +8,7 @@ echo "[*] Starting universal installation of ArchPkg CLI..."
 # 0. Detect if running as root — disable sudo
 ##############################################
 if [ "$(id -u)" -eq 0 ]; then
-    echo "[*] Running as root → disabling all sudo usage"
+    echo "[*] Running as root → disabling sudo"
     SUDO=""
 else
     SUDO="sudo"
@@ -18,7 +18,7 @@ fi
 # 1. Detect distro
 ##############################################
 if [ ! -f /etc/os-release ]; then
-    echo "[!] Cannot detect distro (missing /etc/os-release). Exiting."
+    echo "[!] Cannot detect distro. Exiting."
     exit 1
 fi
 
@@ -27,17 +27,14 @@ DISTRO=$ID
 echo "[*] Detected Linux distro: $NAME ($DISTRO)"
 
 case "$DISTRO" in
-    # Fedora variants
     bluefin|nobara|ultramarine|silverblue|fedora*)
         DISTRO="fedora"
         echo "[*] Normalized to Fedora-based."
         ;;
-    # Arch variants
     endeavouros|manjaro|archcraft|arch*)
         DISTRO="arch"
         echo "[*] Normalized to Arch-based."
         ;;
-    # Debian/Ubuntu variants
     pop|pop_os|ubuntu|debian*)
         DISTRO="debian"
         echo "[*] Normalized to Debian/Ubuntu-based."
@@ -47,13 +44,34 @@ case "$DISTRO" in
         echo "[*] Normalized to openSUSE-based."
         ;;
     *)
-        echo "[!] Unknown distro → defaulting to Fedora-based"
+        echo "[!] Unknown distro → defaulting to Fedora"
         DISTRO="fedora"
         ;;
 esac
 
 ##############################################
-# 2. Package install helper (fault tolerant)
+# 2. Select dependency packages
+##############################################
+# Minimal set needed everywhere
+COMMON_PKGS=(git curl wget ca-certificates)
+
+case "$DISTRO" in
+    debian)
+        DEPS=(python3 python3-pip python3-venv pipx "${COMMON_PKGS[@]}")
+        ;;
+    fedora)
+        DEPS=(python3 python3-pip python3-virtualenv pipx "${COMMON_PKGS[@]}")
+        ;;
+    arch)
+        DEPS=(python python-pip python-pipx python-virtualenv "${COMMON_PKGS[@]}")
+        ;;
+    opensuse)
+        DEPS=(python3 python3-pip python3-pipx python3-virtualenv "${COMMON_PKGS[@]}")
+        ;;
+esac
+
+##############################################
+# 3. Fault-tolerant package installer
 ##############################################
 install_pkg() {
     pkg="$1"
@@ -81,93 +99,62 @@ install_pkg() {
 }
 
 ##############################################
-# 3. Ensure Python, pip & venv exist
+# 4. Install all required packages
 ##############################################
-fix_python() {
-    echo "[*] Ensuring python3, pip and venv are available…"
+echo "[*] Installing system dependencies…"
 
-    # python3
-    if ! command -v python3 >/dev/null 2>&1; then
-        install_pkg python3
-    fi
-
-    # pip
-    if ! python3 -m pip --version >/dev/null 2>&1; then
-        install_pkg python3-pip
-    fi
-
-    # venv
-    if ! python3 -m venv --help >/dev/null 2>&1; then
-        install_pkg python3-venv
-    fi
-
-    # final fallback
-    if ! command -v python3 >/dev/null; then
-        echo "[!] Python3 still missing — installer cannot continue."
-        exit 1
-    fi
-}
-
-fix_python
+for pkg in "${DEPS[@]}"; do
+    install_pkg "$pkg"
+done
 
 ##############################################
-# 4. Install pipx (with multiple fallbacks)
+# 5. Ensure python, pip, venv work
+##############################################
+echo "[*] Validating Python environment…"
+
+if ! command -v python3 >/dev/null; then
+    echo "[!] python3 missing — installer cannot continue."
+    exit 1
+fi
+
+if ! python3 -m pip --version >/dev/null 2>&1; then
+    echo "[!] pip missing — attempting install"
+    install_pkg python3-pip
+fi
+
+# venv must work
+python3 -m venv /tmp/testvenv >/dev/null 2>&1 || install_pkg python3-venv || true
+
+##############################################
+# 6. Ensure pipx exists
 ##############################################
 echo "[*] Ensuring pipx is installed…"
 
-install_pipx_system() {
-    case "$DISTRO" in
-        debian)
-            install_pkg pipx
-            ;;
-        fedora)
-            install_pkg pipx
-            ;;
-        arch)
-            install_pkg python-pipx
-            ;;
-        opensuse)
-            install_pkg python3-pipx
-            ;;
-    esac
-}
-
 if ! command -v pipx >/dev/null 2>&1; then
-    echo "[*] Trying system installation of pipx…"
-    install_pipx_system
-fi
-
-if ! command -v pipx >/dev/null 2>&1; then
-    echo "[!] System pipx not available → falling back to pip install..."
+    echo "[*] pipx missing → installing with pip fallback…"
     python3 -m pip install --user pipx >/dev/null 2>&1 || true
     export PATH="$HOME/.local/bin:$PATH"
 fi
 
-if ! command -v pipx >/dev/null 2>&1; then
-    echo "[!] pipx installation failed."
-    echo "    Try manually running:"
-    echo "        python3 -m pip install --user pipx"
+if ! command -v pipx >/dev/null; then
+    echo "[!] pipx installation failed — cannot continue."
     exit 1
 fi
 
-echo "[*] pipx installed successfully."
 pipx ensurepath >/dev/null 2>&1 || true
 
 ##############################################
-# 5. Install or update ArchPkg CLI
+# 7. Install ArchPkg (now git exists)
 ##############################################
-if ! command -v archpkg >/dev/null 2>&1; then
-    echo "[*] Installing ArchPkg CLI..."
-    pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git || {
-        echo "[!] pipx install failed — retrying with --force"
-        pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git
-    }
-else
-    echo "[*] ArchPkg already installed → upgrading..."
+echo "[*] Installing ArchPkg CLI…"
+
+if ! pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git; then
+    echo "[!] pipx install failed → retrying with --force"
     pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git
 fi
 
 ##############################################
-# 6. Done
+# DONE
 ##############################################
-echo "[✔] Installation complete! Run:  archpkg --help"
+echo "[✔] ArchPkg installation complete!"
+echo "    Run: archpkg --help"
