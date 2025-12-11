@@ -337,7 +337,25 @@ def github_fallback(query: str, unavailable_sources: Optional[List[str]] = None)
         unavailable_sources: List of package managers that failed to search
     """
     logger.info(f"No packages found for query '{query}', providing GitHub fallback")
-    
+
+    # Determine distro-aware install commands
+    detected_distro = detect_distro()
+    install_snap_cmd = "Check your distro docs for snapd"
+    install_flatpak_cmd = "Check your distro docs for flatpak"
+
+    if detected_distro in {"ubuntu", "debian"}:
+        install_snap_cmd = "sudo apt install snapd"
+        install_flatpak_cmd = "sudo apt install flatpak"
+    elif detected_distro == "fedora":
+        install_snap_cmd = "sudo dnf install snapd"
+        install_flatpak_cmd = "sudo dnf install flatpak"
+    elif detected_distro == "suse":
+        install_snap_cmd = "sudo zypper install snapd"
+        install_flatpak_cmd = "sudo zypper install flatpak"
+    elif detected_distro in {"arch", "manjaro"}:
+        install_snap_cmd = "sudo pacman -S snapd"
+        install_flatpak_cmd = "sudo pacman -S flatpak"
+
     # Build alternative options message
     alt_options = [
         "- Install from GitHub repository (source code)",
@@ -349,9 +367,9 @@ def github_fallback(query: str, unavailable_sources: Optional[List[str]] = None)
     # If Snap or Flatpak were unavailable, offer them as options
     if unavailable_sources:
         if "Snap" in unavailable_sources:
-            alt_options.insert(0, "- [yellow]Install Snap[/yellow]: [cyan]sudo apt install snapd[/cyan] (then retry search)")
+            alt_options.insert(0, f"- [yellow]Install Snap[/yellow]: [cyan]{install_snap_cmd}[/cyan] (then retry search)")
         if "Flatpak" in unavailable_sources:
-            alt_options.insert(0, "- [yellow]Install Flatpak[/yellow]: [cyan]sudo apt install flatpak[/cyan] (then retry search)")
+            alt_options.insert(0, f"- [yellow]Install Flatpak[/yellow]: [cyan]{install_flatpak_cmd}[/cyan] (then retry search)")
     
     panel_content = f"[yellow]No packages found for '{query}' in available repositories.[/yellow]\n\n"
     panel_content += "[bold cyan]Alternative options:[/bold cyan]\n"

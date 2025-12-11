@@ -108,39 +108,52 @@ def search_dnf(query: str, cache_manager: Optional[object] = None) -> List[Tuple
             return []
 
         logger.debug("Parsing DNF search results")
-        # Parse DNF output
+        # Parse DNF/DNF5 output. DNF5 may not emit explicit headers and can use tabs or
+        # multiple spaces between package name and description. We avoid relying on a
+        # header toggle and instead parse any reasonable package line.
         packages = []
-        in_results = False
         lines_processed = 0
+
+        arch_pattern = r"\.(x86_64|i686|armv7hl|aarch64|ppc64le|s390x|noarch)$"
 
         for line in output.split("\n"):
             line = line.strip()
             lines_processed += 1
-            
+
             if not line:
                 continue
 
-            # Detect start of results section
-            if "====" in line or ("Name" in line and "Matched" in line):
-                logger.debug("Found DNF results section header")
-                in_results = True
+            # Skip meta/info lines
+            lower_line = line.lower()
+            if lower_line.startswith((
+                "last metadata",
+                "updating",
+                "repositories",
+                "matched fields",
+                "error:",
+                "warning:"
+            )):
                 continue
 
-            # Process package lines
-            if in_results and line and not line.startswith("Last metadata"):
-                if " : " in line:  # standard DNF format: "package : description"
-                    parts = line.split(" : ", 1)
-                    if len(parts) == 2:
-                        name_version = parts[0].strip()
-                        desc = parts[1].strip()
+            # DNF classic format: "name : description"
+            match = re.match(r"^(\S+)\s*:\s*(.+)$", line)
 
-                        # Remove architecture suffix (e.g., .x86_64, .noarch) if present
-                        arch_pattern = r"\.(x86_64|i686|armv7hl|aarch64|ppc64le|s390x|noarch)$"
-                        name = re.sub(arch_pattern, "", name_version)
+            # DNF5 format often uses tabs or multiple spaces: "name<TAB>description"
+            if not match:
+                match = re.match(r"^(\S+)\s{2,}(.+)$", line) or re.match(r"^(\S+)\t+(.+)$", line)
 
-                        # IMPROVED: Standardized source name to lowercase
-                        packages.append((name, desc, "dnf"))
-                        logger.debug(f"Found DNF package: {name}")
+            if match:
+                name_version = match.group(1).strip()
+                desc = match.group(2).strip()
+
+                # Remove architecture suffix (e.g., .x86_64, .noarch) if present
+                name = re.sub(arch_pattern, "", name_version)
+
+                packages.append((name, desc, "dnf"))
+                logger.debug(f"Found DNF package: {name}")
+                continue
+
+        logger.info(f"DNF search completed: {len(packages)} packages found from {lines_processed} lines")
 
         logger.info(f"DNF search completed: {len(packages)} packages found from {lines_processed} lines")
         
