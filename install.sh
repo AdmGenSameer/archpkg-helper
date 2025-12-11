@@ -1,161 +1,173 @@
 #!/bin/bash
-# Note: set -e is used but we handle critical failures explicitly with fallbacks
+# Ultra-fault-tolerant ArchPkg installer
 set -e
 
-# ------------------------------
-# Header
-# ------------------------------
 echo "[*] Starting universal installation of ArchPkg CLI..."
 
-# ------------------------------
-# Step 1: Detect Linux distro
-# ------------------------------
-
-if [ -f /etc/os-release ]; then
-    . /etc/os-release
-    DISTRO=$ID
-    echo "[*] Detected Linux distro: $NAME ($DISTRO)"
-
-    # Map unconventional distros to their base
-    case "$DISTRO" in
-        bluefin|nobara|ultramarine|silverblue|fedora*)
-            DISTRO="fedora"
-            echo "[*] Treating $ID as Fedora-based."
-            ;;
-        omarchyos|endeavouros|manjaro|archcraft|arch*)
-            DISTRO="arch"
-            echo "[*] Treating $ID as Arch-based."
-            ;;
-        pop|pop_os|ubuntu|debian*)
-            DISTRO="ubuntu"
-            echo "[*] Treating $ID as Ubuntu/Debian-based."
-            ;;
-        opensuse|opensuse-tumbleweed|opensuse-leap|suse*)
-            DISTRO="opensuse"
-            echo "[*] Treating $ID as openSUSE-based."
-            ;;
-        *)
-            echo "[!] Unrecognized distro: $ID. Defaulting to Fedora (dnf)."
-            DISTRO="fedora"
-            ;;
-    esac
+##############################################
+# 0. Detect if running as root — disable sudo
+##############################################
+if [ "$(id -u)" -eq 0 ]; then
+    echo "[*] Running as root → disabling all sudo usage"
+    SUDO=""
 else
-    echo "[!] Cannot detect Linux distribution. Exiting."
+    SUDO="sudo"
+fi
+
+##############################################
+# 1. Detect distro
+##############################################
+if [ ! -f /etc/os-release ]; then
+    echo "[!] Cannot detect distro (missing /etc/os-release). Exiting."
     exit 1
 fi
 
-# ------------------------------
-# Step 2: Define essential system dependencies
-# ------------------------------
-if [ "$DISTRO" = "arch" ]; then
-    DEPENDENCIES=(python python-pip python-pipx git curl wget)
-elif [ "$DISTRO" = "opensuse" ]; then
-    # openSUSE includes venv in the base python3 package
-    DEPENDENCIES=(python3 python3-pip python3-pipx git curl wget)
-elif [ "$DISTRO" = "fedora" ]; then
-    # Fedora uses 'pipx' package name (not python3-pipx)
-    DEPENDENCIES=(python3 python3-pip pipx python3-venv git curl wget)
-else
-    # For Ubuntu/Debian and other distros
-    DEPENDENCIES=(python3 python3-pip python3-pipx python3-venv git curl wget)
-fi
+. /etc/os-release
+DISTRO=$ID
+echo "[*] Detected Linux distro: $NAME ($DISTRO)"
 
-install_package() {
-    PACKAGE=$1
-    echo "[*] Installing $PACKAGE if missing..."
+case "$DISTRO" in
+    # Fedora variants
+    bluefin|nobara|ultramarine|silverblue|fedora*)
+        DISTRO="fedora"
+        echo "[*] Normalized to Fedora-based."
+        ;;
+    # Arch variants
+    endeavouros|manjaro|archcraft|arch*)
+        DISTRO="arch"
+        echo "[*] Normalized to Arch-based."
+        ;;
+    # Debian/Ubuntu variants
+    pop|pop_os|ubuntu|debian*)
+        DISTRO="debian"
+        echo "[*] Normalized to Debian/Ubuntu-based."
+        ;;
+    opensuse*|suse*)
+        DISTRO="opensuse"
+        echo "[*] Normalized to openSUSE-based."
+        ;;
+    *)
+        echo "[!] Unknown distro → defaulting to Fedora-based"
+        DISTRO="fedora"
+        ;;
+esac
+
+##############################################
+# 2. Package install helper (fault tolerant)
+##############################################
+install_pkg() {
+    pkg="$1"
+    echo "[*] Ensuring $pkg is installed…"
+
     case "$DISTRO" in
-        ubuntu|debian)
-            dpkg -s "$PACKAGE" &> /dev/null || sudo apt install -y "$PACKAGE"
+        debian)
+            dpkg -s "$pkg" >/dev/null 2>&1 && return 0
+            $SUDO apt-get update -y >/dev/null 2>&1 || true
+            $SUDO apt-get install -y "$pkg" >/dev/null 2>&1 || true
             ;;
         fedora)
-            rpm -q "$PACKAGE" &> /dev/null || sudo dnf install -y "$PACKAGE"
+            rpm -q "$pkg" >/dev/null 2>&1 && return 0
+            $SUDO dnf install -y "$pkg" >/dev/null 2>&1 || true
             ;;
         arch)
-            pacman -Qi "$PACKAGE" &> /dev/null || sudo pacman -S --noconfirm "$PACKAGE"
+            pacman -Qi "$pkg" >/dev/null 2>&1 && return 0
+            $SUDO pacman -Sy --noconfirm "$pkg" >/dev/null 2>&1 || true
             ;;
         opensuse)
-            rpm -q "$PACKAGE" &> /dev/null || sudo zypper install -y "$PACKAGE"
-            ;;
-        *)
-            echo "[!] Unsupported Linux distro: $DISTRO"
-            exit 1
+            rpm -q "$pkg" >/dev/null 2>&1 && return 0
+            $SUDO zypper install -y "$pkg" >/dev/null 2>&1 || true
             ;;
     esac
 }
 
-# ------------------------------
-# Step 4: Install system dependencies
-# ------------------------------
-echo "[*] Checking and installing system dependencies..."
-for pkg in "${DEPENDENCIES[@]}"; do
-    install_package "$pkg"
-done
+##############################################
+# 3. Ensure Python, pip & venv exist
+##############################################
+fix_python() {
+    echo "[*] Ensuring python3, pip and venv are available…"
 
-# ------------------------------
-# Step 5: Ensure pipx path is configured
-# ------------------------------
-if command -v pipx &> /dev/null; then
-    echo "[*] pipx is installed. Ensuring PATH is configured..."
-    pipx ensurepath
-else
-    echo "[!] pipx not found after system package installation. Attempting fallback to pip install..."
-    
-    # Temporarily disable set -e to handle pip install failures gracefully
-    set +e
-    python3 -m pip install --user pipx
-    PIP_INSTALL_STATUS=$?
-    set -e
-    
-    # Check if pip install succeeded
-    if [ $PIP_INSTALL_STATUS -eq 0 ]; then
-        echo "[*] pipx installed successfully via pip. Ensuring PATH is configured..."
-        python3 -m pipx ensurepath
-        
-        # Add pipx to PATH for current session
-        export PATH="$HOME/.local/bin:$PATH"
-        
-        if command -v pipx &> /dev/null; then
-            echo "[✔] pipx is now available!"
-        else
-            echo "[!] pipx installed but not in PATH. You may need to restart your shell or run:"
-            echo "    export PATH=\"\$HOME/.local/bin:\$PATH\""
-            echo "    Then run this installer again."
-            exit 1
-        fi
-    else
-        echo ""
-        echo "[!] Failed to install pipx via both system package manager and pip."
-        echo ""
-        echo "Troubleshooting steps:"
-        if [ "$DISTRO" = "fedora" ]; then
-            echo "  For Fedora/RHEL-based systems:"
-            echo "    1. Try: sudo dnf install -y pipx"
-            echo "    2. If that fails, ensure EPEL or standard repos are enabled"
-            echo "    3. Or install manually: python3 -m pip install --user pipx"
-        else
-            echo "  1. Install pipx manually using your package manager"
-            echo "  2. Or run: python3 -m pip install --user pipx"
-        fi
-        echo "  3. Then run: pipx ensurepath"
-        echo "  4. Restart your shell and try this installer again"
-        echo ""
+    # python3
+    if ! command -v python3 >/dev/null 2>&1; then
+        install_pkg python3
+    fi
+
+    # pip
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        install_pkg python3-pip
+    fi
+
+    # venv
+    if ! python3 -m venv --help >/dev/null 2>&1; then
+        install_pkg python3-venv
+    fi
+
+    # final fallback
+    if ! command -v python3 >/dev/null; then
+        echo "[!] Python3 still missing — installer cannot continue."
         exit 1
     fi
+}
+
+fix_python
+
+##############################################
+# 4. Install pipx (with multiple fallbacks)
+##############################################
+echo "[*] Ensuring pipx is installed…"
+
+install_pipx_system() {
+    case "$DISTRO" in
+        debian)
+            install_pkg pipx
+            ;;
+        fedora)
+            install_pkg pipx
+            ;;
+        arch)
+            install_pkg python-pipx
+            ;;
+        opensuse)
+            install_pkg python3-pipx
+            ;;
+    esac
+}
+
+if ! command -v pipx >/dev/null 2>&1; then
+    echo "[*] Trying system installation of pipx…"
+    install_pipx_system
 fi
 
-# ------------------------------
-# Step 6: Install ArchPkg CLI
-# ------------------------------
-if ! command -v archpkg &> /dev/null; then
-    echo "[*] Installing ArchPkg CLI via pipx..."
-    pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git
+if ! command -v pipx >/dev/null 2>&1; then
+    echo "[!] System pipx not available → falling back to pip install..."
+    python3 -m pip install --user pipx >/dev/null 2>&1 || true
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+if ! command -v pipx >/dev/null 2>&1; then
+    echo "[!] pipx installation failed."
+    echo "    Try manually running:"
+    echo "        python3 -m pip install --user pipx"
+    exit 1
+fi
+
+echo "[*] pipx installed successfully."
+pipx ensurepath >/dev/null 2>&1 || true
+
+##############################################
+# 5. Install or update ArchPkg CLI
+##############################################
+if ! command -v archpkg >/dev/null 2>&1; then
+    echo "[*] Installing ArchPkg CLI..."
+    pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git || {
+        echo "[!] pipx install failed — retrying with --force"
+        pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git
+    }
 else
-    echo "[*] ArchPkg CLI is already installed. Upgrading to latest version..."
+    echo "[*] ArchPkg already installed → upgrading..."
     pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git
 fi
 
-# ------------------------------
-# Step 7: Completion message
-# ------------------------------
-echo "[✔] Universal installation complete! Run 'archpkg --help' to verify."
-
+##############################################
+# 6. Done
+##############################################
+echo "[✔] Installation complete! Run:  archpkg --help"
