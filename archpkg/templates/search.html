@@ -112,7 +112,8 @@
             <div id="noResults" class="text-center" style="display: none;">
                 <i class="fas fa-search text-muted" style="font-size: 3rem;"></i>
                 <h4 class="mt-3 text-muted">No packages found</h4>
-                <p class="text-muted">Try searching on GitHub for source code</p>
+                <p class="text-muted mb-4">Try the options below or search on GitHub for source code</p>
+                <div id="suggestions" class="mb-4"></div>
                 <button class="btn btn-outline-secondary mt-2" id="githubFallbackBtn" style="display: none;">
                     <i class="fab fa-github me-2"></i>Search on GitHub
                 </button>
@@ -200,6 +201,7 @@
             const loading = document.getElementById('loading');
             const results = document.getElementById('results');
             const noResults = document.getElementById('noResults');
+            const suggestions = document.getElementById('suggestions');
             const githubResults = document.getElementById('githubResults');
             const resultsList = document.getElementById('resultsList');
             const resultCount = document.getElementById('resultCount');
@@ -209,6 +211,7 @@
             results.style.display = 'none';
             noResults.style.display = 'none';
             githubResults.style.display = 'none';
+            suggestions.innerHTML = '';
 
             try {
                 const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
@@ -219,6 +222,11 @@
                 if (data.results && data.results.length > 0) {
                     displayResults(data.results);
                 } else {
+                    // Show unavailable sources as installation suggestions
+                    if (data.suggestions) {
+                        displaySuggestions(data.suggestions);
+                    }
+                    
                     // Show GitHub fallback option
                     document.getElementById('githubFallbackBtn').style.display = 'inline-block';
                     noResults.style.display = 'block';
@@ -231,6 +239,40 @@
                 loading.style.display = 'none';
                 noResults.style.display = 'block';
             }
+        }
+        
+        function displaySuggestions(suggestions) {
+            const suggestionsDiv = document.getElementById('suggestions');
+            
+            let html = '<div class="row g-2">';
+            for (const [key, suggestion] of Object.entries(suggestions)) {
+                html += `
+                    <div class="col-md-6">
+                        <div class="alert alert-info mb-0">
+                            <div class="fw-bold mb-1">
+                                <i class="fas fa-info-circle me-2"></i>${suggestion.message}
+                            </div>
+                            <small>${suggestion.help_text}</small>
+                            <div class="mt-2">
+                                <code class="d-block bg-light p-2 rounded mb-2">${suggestion.install_command}</code>
+                                <button class="btn btn-sm btn-info" onclick="copyToClipboard('${suggestion.install_command}')">
+                                    <i class="fas fa-copy me-1"></i>Copy Command
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            html += '</div>';
+            suggestionsDiv.innerHTML = html;
+        }
+        
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Command copied to clipboard!');
+            }).catch(() => {
+                alert('Failed to copy command');
+            });
         }
 
         async function searchGitHub(query) {

@@ -329,17 +329,36 @@ def show_opensuse_brave_guidance() -> None:
         border_style="blue"
     ))
 
-def github_fallback(query: str) -> None:
-    """Provide GitHub search fallback with clear messaging."""
+def github_fallback(query: str, unavailable_sources: Optional[List[str]] = None) -> None:
+    """Provide GitHub search fallback with clear messaging and alternative installation options.
+    
+    Args:
+        query: The search query
+        unavailable_sources: List of package managers that failed to search
+    """
     logger.info(f"No packages found for query '{query}', providing GitHub fallback")
     
+    # Build alternative options message
+    alt_options = [
+        "- Install from GitHub repository (source code)",
+        "- Check if the package name is spelled correctly",
+        "- Try searching with different keywords",
+        "- Look for similar packages with: [cyan]archpkg <similar-name>[/cyan]"
+    ]
+    
+    # If Snap or Flatpak were unavailable, offer them as options
+    if unavailable_sources:
+        if "Snap" in unavailable_sources:
+            alt_options.insert(0, "- [yellow]Install Snap[/yellow]: [cyan]sudo apt install snapd[/cyan] (then retry search)")
+        if "Flatpak" in unavailable_sources:
+            alt_options.insert(0, "- [yellow]Install Flatpak[/yellow]: [cyan]sudo apt install flatpak[/cyan] (then retry search)")
+    
+    panel_content = f"[yellow]No packages found for '{query}' in available repositories.[/yellow]\n\n"
+    panel_content += "[bold cyan]Alternative options:[/bold cyan]\n"
+    panel_content += "\n".join(alt_options)
+    
     console.print(Panel(
-        f"[yellow]No packages found for '{query}' in available repositories.[/yellow]\n\n"
-        "[bold cyan]Alternative options:[/bold cyan]\n"
-        "- Search GitHub for source code or releases\n"
-        "- Check if the package name is spelled correctly\n" 
-        "- Try searching with different keywords\n"
-        "- Look for similar packages with: [cyan]archpkg <similar-name>[/cyan]",
+        panel_content,
         title="No Packages Found",
         border_style="yellow"
     ))
@@ -347,7 +366,7 @@ def github_fallback(query: str) -> None:
     try:
         url = f"https://github.com/search?q={query.replace(' ', '+')}&type=repositories"
         logger.info(f"Opening GitHub search URL: {url}")
-        console.print(f"[blue]Opening GitHub search:[/blue] {url}")
+        console.print(f"\n[blue]Opening GitHub search:[/blue] {url}")
         webbrowser.open(url)
     except Exception as e:
         PackageHelperLogger.log_exception(logger, "Failed to open web browser for GitHub search", e)
@@ -891,15 +910,16 @@ def search(
     # Remove duplicate error messages
     search_errors = list(set(search_errors))
 
+    # Show available vs unavailable sources only in debug mode
     if search_errors:
-        console.print(f"[dim]Note: Some sources unavailable: {', '.join(search_errors)}[/dim]\n")
-
+        logger.debug(f"Note: Some sources unavailable: {', '.join(search_errors)}")
+    
     if not results:
         logger.info("No results found, providing GitHub fallback")
         # Show special guidance for Brave browser on openSUSE
         if detected == "suse" and "brave" in query_str.lower():
             show_opensuse_brave_guidance()
-        github_fallback(query_str)
+        github_fallback(query_str, search_errors)
         return
 
     deduplicated_results = deduplicate_packages(results, prefer_aur=aur)

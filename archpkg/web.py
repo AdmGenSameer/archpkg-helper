@@ -126,13 +126,30 @@ def api_search():
         'distro': detected_distro
     }
     
-    # Add information about unavailable sources
+    # Add information about unavailable sources with helpful guidance
     if unavailable_sources:
         response_data['unavailable_sources'] = unavailable_sources
+        response_data['suggestions'] = {}
+        
+        # Provide installation guidance for unavailable tools
+        if 'Snap' in unavailable_sources:
+            response_data['suggestions']['snap'] = {
+                'message': 'Snap not available',
+                'install_command': 'sudo apt install snapd' if 'ubuntu' in detected_distro or 'debian' in detected_distro else 'Check your distro docs',
+                'help_text': 'Install Snap to access thousands of containerized packages'
+            }
+        
+        if 'Flatpak' in unavailable_sources:
+            response_data['suggestions']['flatpak'] = {
+                'message': 'Flatpak not available',
+                'install_command': 'sudo apt install flatpak' if 'ubuntu' in detected_distro or 'debian' in detected_distro else 'Check your distro docs',
+                'help_text': 'Install Flatpak to access universal Linux applications'
+            }
+        
         logger.info(f"Unavailable sources: {', '.join(unavailable_sources)}")
     
     if len(results) == 0:
-        response_data['message'] = "No packages found in official repositories. Try searching GitHub or check package names."
+        response_data['message'] = "No packages found in available repositories. Try installing Snap or Flatpak, or search GitHub for source code."
 
     return jsonify(response_data)
 
