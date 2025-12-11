@@ -5,6 +5,8 @@
 import sys
 import os
 import webbrowser
+import threading
+import time
 from typing import List, Tuple, Optional
 from rich.console import Console
 from rich.table import Table
@@ -28,6 +30,7 @@ from archpkg.search_snap import search_snap
 from archpkg.search_apt import search_apt
 from archpkg.search_dnf import search_dnf
 from archpkg.search_zypper import search_zypper
+from archpkg.search_rpm import search_rpm
 from archpkg.command_gen import generate_command
 from archpkg.logging_config import get_logger, PackageHelperLogger
 from archpkg.github_install import install_from_github, validate_github_url
@@ -38,6 +41,7 @@ from archpkg.download_manager import install_updates, start_background_update_se
 from archpkg.installed_apps import add_installed_package, get_all_installed_packages, get_packages_with_updates
 from archpkg.suggest import suggest_apps, list_purposes
 from archpkg.cache import get_cache_manager, CacheConfig
+from archpkg.pkgs_org import PkgsOrgClient
 
 console = Console()
 logger = get_logger(__name__)
@@ -328,6 +332,62 @@ def show_opensuse_brave_guidance() -> None:
         title="🦁 Brave Browser Installation",
         border_style="blue"
     ))
+
+def search_pkgs_org(query: str, detected_distro: str, limit: int = 10) -> List[dict]:
+    """Search pkgs.org for packages across distributions.
+    
+    Args:
+        query: Package search query
+        detected_distro: Current detected distribution
+        limit: Maximum number of results
+        
+    Returns:
+        List of package dicts with install commands and metadata
+    """
+    try:
+        logger.debug("Attempting pkgs.org search as supplementary source")
+        client = PkgsOrgClient()
+        
+        # Search with distro hint
+        results = client.search(query, distro=detected_distro, limit=limit)
+        
+        if not results:
+            logger.debug("pkgs.org returned no results")
+            return []
+        
+        logger.info(f"pkgs.org found {len(results)} cross-distro results")
+        return results
+        
+    except Exception as e:
+        logger.debug(f"pkgs.org search failed: {e}")
+        return []
+
+def show_pkgs_org_availability(results: List[dict]) -> None:
+    """Show where a package is available across distributions.
+    
+    Args:
+        results: List of package dict results from pkgs.org
+    """
+    if not results:
+        return
+    
+    try:
+        # Group by distro
+        distro_packages = {}
+        for r in results:
+            distro = r.get("distro", "Unknown")
+            if distro not in distro_packages:
+                distro_packages[distro] = []
+            distro_packages[distro].append(r.get("name", ""))
+        
+        console.print("\n[bold cyan]📊 Cross-Distribution Availability:[/bold cyan]")
+        for distro, packages in distro_packages.items():
+            pkg_list = ", ".join(packages[:3])
+            if len(packages) > 3:
+                pkg_list += f" (+{len(packages)-3} more)"
+            console.print(f"  • {distro}: {pkg_list}")
+    except Exception as e:
+        logger.debug(f"Failed to show availability: {e}")
 
 def github_fallback(query: str, unavailable_sources: Optional[List[str]] = None) -> None:
     """Provide GitHub search fallback with clear messaging and alternative installation options.
@@ -848,6 +908,23 @@ def search(
     results = []
     search_errors = []
     use_cache = not no_cache
+    
+    # Start async pkgs.org search in background
+    pkgs_org_results = []
+    pkgs_org_thread = None
+    
+    def async_pkgs_org_search():
+        nonlocal pkgs_org_results
+        try:
+            logger.debug("Background pkgs.org search started")
+            pkgs_org_results = search_pkgs_org(query_str, detected, limit=10)
+            logger.debug(f"Background pkgs.org search completed: {len(pkgs_org_results)} results")
+        except Exception as e:
+            logger.debug(f"Background pkgs.org search failed: {e}")
+    
+    # Launch background search
+    pkgs_org_thread = threading.Thread(target=async_pkgs_org_search, daemon=True)
+    pkgs_org_thread.start()
 
     # Search with all query variations
     for query_variant in query_variations:
@@ -892,6 +969,14 @@ def search(
                 logger.debug(f"DNF search failed: {e}")
                 if query_variant == query_str:
                     search_errors.append("DNF")
+            
+            # Fallback to RPM if DNF fails
+            try:
+                logger.debug("Starting RPM search as fallback")
+                rpm_results = search_rpm(query_variant, limit=limit)
+                results.extend(rpm_results)
+            except Exception as e:
+                logger.debug(f"RPM search failed: {e}")
                 
         elif detected == "suse":
             logger.info("Searching openSUSE-based repositories (Zypper)")
@@ -932,16 +1017,84 @@ def search(
     if search_errors:
         logger.debug(f"Note: Some sources unavailable: {', '.join(search_errors)}")
     
+    # Wait for background pkgs.org search to complete (max 5 seconds)
+    if pkgs_org_thread and pkgs_org_thread.is_alive():
+        logger.debug("Waiting for background pkgs.org search...")
+        pkgs_org_thread.join(timeout=5.0)
+    
     if not results:
-        logger.info("No results found, providing GitHub fallback")
+        logger.info("No results found in local package managers")
+        
+        if pkgs_org_results:
+            # Show pkgs.org results
+            console.print(Panel(
+                f"[yellow]No packages found in your local repositories.[/yellow]\n\n"
+                f"[bold cyan]However, '{query_str}' is available on other distributions:[/bold cyan]",
+                title="📦 Cross-Distribution Search",
+                border_style="cyan"
+            ))
+            
+            # Display pkgs.org results in a table with install commands
+            table = Table(title="Available on Other Distributions (via pkgs.org)", width=120, expand=False)
+            table.add_column("Package Name", style="green")
+            table.add_column("Distribution/Repo", style="blue")
+            table.add_column("Description", style="magenta")
+            table.add_column("Install Command", style="yellow")
+            
+            for pkg_dict in pkgs_org_results[:limit]:
+                name = pkg_dict.get("name", "")
+                desc = pkg_dict.get("summary", "") or pkg_dict.get("description", "No description")
+                distro = pkg_dict.get("distro", "Unknown")
+                repo = pkg_dict.get("repo", "")
+                source_label = f"{distro}" + (f" ({repo})" if repo else "")
+                
+                # Extract install command if available
+                install_cmd = pkg_dict.get("install_command", "")
+                if not install_cmd and pkg_dict.get("url"):
+                    install_cmd = f"Visit: {pkg_dict.get('url')}"
+                
+                table.add_row(name, source_label, desc or "No description", install_cmd or "Manual install")
+            
+            console.print(table)
+            
+            # Show cross-distro availability summary
+            show_pkgs_org_availability(pkgs_org_results)
+            
+            console.print("\n[bold yellow]💡 Suggestions:[/bold yellow]")
+            console.print("  • This package may be in a third-party repository")
+            console.print("  • Check if you need to enable additional repos")
+            console.print("  • Try installing via Snap or Flatpak (see below)")
+            
+            # Offer automatic installation if we have direct commands
+            installable = [p for p in pkgs_org_results if p.get("install_command")]
+            if installable:
+                console.print(f"\n[bold green]✨ {len(installable)} package(s) have direct install commands available[/bold green]")
+            console.print()
+        
         # Show special guidance for Brave browser on openSUSE
         if detected == "suse" and "brave" in query_str.lower():
             show_opensuse_brave_guidance()
+        
+        # Always show the GitHub fallback and installation suggestions
         github_fallback(query_str, search_errors)
         return
 
     deduplicated_results = deduplicate_packages(results, prefer_aur=aur)
     logger.info(f"After deduplication: {len(deduplicated_results)} unique packages")
+    
+    # Show pkgs.org supplementary results if available (even when local results exist)
+    if pkgs_org_results and len(pkgs_org_results) > 0:
+        console.print("\n[dim]📦 Additional packages available on other distributions:[/dim]")
+        pkgs_summary = []
+        for pkg_dict in pkgs_org_results[:3]:
+            name = pkg_dict.get("name", "")
+            distro = pkg_dict.get("distro", "Unknown")
+            pkgs_summary.append(f"{name} ({distro})")
+        console.print(f"[dim]  {', '.join(pkgs_summary)}[/dim]")
+        if len(pkgs_org_results) > 3:
+            console.print(f"[dim]  +{len(pkgs_org_results)-3} more available via pkgs.org[/dim]\n")
+        else:
+            console.print()
 
     top_matches = get_top_matches(query_str, deduplicated_results, limit=limit)
     if not top_matches:
