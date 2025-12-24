@@ -557,6 +557,13 @@ Contributions are welcome! Please:
 5. Open a Pull Request
 
 Report bugs or request features via the [issue tracker](https://github.com/AdmGenSameer/archpkg-helper/issues).
+---
+
+##  Contributors
+Thanks to all the amazing people who have contributed to this project:
+
+[![Contributors](https://contrib.rocks/image?repo=AdmGenSameer/archpkg-helper)](https://github.com/AdmGenSameer/archpkg-helper/graphs/contributors)
+
 
 ### Contributing to Purpose Mappings
 
