@@ -15,11 +15,16 @@ logger = get_logger(__name__)
 @dataclass
 class UserConfig:
     """User configuration settings"""
+    user_mode: str = "normal"  # "normal" or "advanced"
     auto_update_enabled: bool = False
     auto_update_mode: str = "manual"  # "automatic" or "manual"
     update_check_interval_hours: int = 24
     background_download_enabled: bool = True
     notification_enabled: bool = True
+    auto_handle_arch_news: bool = True
+    auto_review_aur_trust: bool = True
+    auto_snapshot_before_update: bool = False
+    proactive_system_advice: bool = True
 
 class ConfigManager:
     """Manages user configuration with atomic file operations"""
@@ -103,11 +108,16 @@ class ConfigManager:
             f"Configuration file: {self.config_file}",
             "",
             "Current settings:",
+            f"  User mode: {config.user_mode}",
             f"  Auto-update enabled: {config.auto_update_enabled}",
             f"  Auto-update mode: {config.auto_update_mode}",
             f"  Update check interval: {config.update_check_interval_hours} hours",
             f"  Background download: {config.background_download_enabled}",
             f"  Notifications: {config.notification_enabled}",
+            f"  Auto-handle Arch news: {config.auto_handle_arch_news}",
+            f"  Auto-review AUR trust: {config.auto_review_aur_trust}",
+            f"  Auto-snapshot before update: {config.auto_snapshot_before_update}",
+            f"  Proactive system advice: {config.proactive_system_advice}",
         ]
         return "\n".join(lines)
 

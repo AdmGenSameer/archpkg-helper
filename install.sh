@@ -57,16 +57,16 @@ COMMON_PKGS=(git curl wget ca-certificates)
 
 case "$DISTRO" in
     debian)
-        DEPS=(python3 python3-pip python3-venv pipx "${COMMON_PKGS[@]}")
+        DEPS=(python3 python3-pip python3-venv pipx python3-pyqt5 "${COMMON_PKGS[@]}")
         ;;
     fedora)
-        DEPS=(python3 python3-pip python3-virtualenv pipx "${COMMON_PKGS[@]}")
+        DEPS=(python3 python3-pip python3-virtualenv pipx python3-qt5 "${COMMON_PKGS[@]}")
         ;;
     arch)
-        DEPS=(python python-pip python-pipx python-virtualenv "${COMMON_PKGS[@]}")
+        DEPS=(python python-pip python-pipx python-virtualenv python-pyqt5 base-devel "${COMMON_PKGS[@]}")
         ;;
     opensuse)
-        DEPS=(python3 python3-pip python3-pipx python3-virtualenv "${COMMON_PKGS[@]}")
+        DEPS=(python3 python3-pip python3-pipx python3-virtualenv python3-qt5 "${COMMON_PKGS[@]}")
         ;;
 esac
 
@@ -106,6 +106,41 @@ echo "[*] Installing system dependencies…"
 for pkg in "${DEPS[@]}"; do
     install_pkg "$pkg"
 done
+
+##############################################
+# 4.5 Ensure paru is available on Arch
+##############################################
+if [ "$DISTRO" = "arch" ]; then
+    echo "[*] Checking for paru (recommended AUR helper)…"
+    if ! command -v paru >/dev/null 2>&1; then
+        echo "[*] paru not found. Attempting installation from AUR…"
+        if ! command -v git >/dev/null 2>&1; then
+            install_pkg git
+        fi
+
+        PARU_BUILD_DIR="/tmp/paru-bin-build"
+        rm -rf "$PARU_BUILD_DIR"
+        git clone https://aur.archlinux.org/paru-bin.git "$PARU_BUILD_DIR" >/dev/null 2>&1 || true
+
+        if [ -d "$PARU_BUILD_DIR" ]; then
+            pushd "$PARU_BUILD_DIR" >/dev/null
+            if [ -n "$SUDO" ]; then
+                sudo -u "$USER" makepkg -si --noconfirm >/dev/null 2>&1 || true
+            else
+                makepkg -si --noconfirm >/dev/null 2>&1 || true
+            fi
+            popd >/dev/null
+        fi
+
+        if command -v paru >/dev/null 2>&1; then
+            echo "[✔] paru installed successfully."
+        else
+            echo "[!] paru installation failed. Continuing, but Arch workflows may be limited."
+        fi
+    else
+        echo "[✔] paru is already installed."
+    fi
+fi
 
 ##############################################
 # 5. Ensure python, pip, venv work
@@ -154,7 +189,65 @@ if ! pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git; then
 fi
 
 ##############################################
+# 8. Profile setup (normal vs advanced)
+##############################################
+if [ "$DISTRO" = "arch" ]; then
+    echo ""
+    echo "[*] Choose your archpkg profile:"
+    echo "    1) normal (recommended) - archpkg handles updates/news/trust checks automatically"
+    echo "    2) advanced - full manual control"
+    read -r -p "Enter choice [1/2] (default: 1): " ARCHPKG_PROFILE_CHOICE
+
+    if [ "$ARCHPKG_PROFILE_CHOICE" = "2" ]; then
+        ARCHPKG_USER_MODE="advanced"
+    else
+        ARCHPKG_USER_MODE="normal"
+    fi
+
+    mkdir -p "$HOME/.archpkg"
+    if [ "$ARCHPKG_USER_MODE" = "advanced" ]; then
+        cat > "$HOME/.archpkg/config.json" <<EOF
+{
+  "user_mode": "advanced",
+  "auto_update_enabled": false,
+  "auto_update_mode": "manual",
+  "update_check_interval_hours": 24,
+  "background_download_enabled": true,
+  "notification_enabled": true,
+  "auto_handle_arch_news": false,
+  "auto_review_aur_trust": false,
+  "auto_snapshot_before_update": false,
+  "proactive_system_advice": false
+}
+EOF
+    else
+        cat > "$HOME/.archpkg/config.json" <<EOF
+{
+  "user_mode": "normal",
+  "auto_update_enabled": true,
+  "auto_update_mode": "automatic",
+  "update_check_interval_hours": 24,
+  "background_download_enabled": true,
+  "notification_enabled": true,
+  "auto_handle_arch_news": true,
+  "auto_review_aur_trust": true,
+  "auto_snapshot_before_update": true,
+  "proactive_system_advice": true
+}
+EOF
+    fi
+
+    echo "[✔] Profile configured: $ARCHPKG_USER_MODE"
+fi
+
+##############################################
 # DONE
 ##############################################
 echo "[✔] ArchPkg installation complete!"
-echo "    Run: archpkg --help"
+echo ""
+echo "Quick start:"
+echo "    archpkg --help       # Show all CLI commands"
+echo "    archpkg gui          # Launch native desktop GUI"
+echo "    archpkg search <pkg> # Search for packages"
+echo ""
+echo "Both CLI and GUI are now available!"

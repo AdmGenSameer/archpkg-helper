@@ -1,0 +1,20 @@
+[Unit]
+Description=archpkg Background Monitor
+Documentation=https://github.com/yourusername/archpkg-helper
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -m archpkg.monitor --once
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.cache/archpkg %h/.config/archpkg %h/.archpkg
+
+[Install]
+WantedBy=default.target

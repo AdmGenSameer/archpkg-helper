@@ -23,7 +23,7 @@ except ImportError:
 
 # Import modules
 from archpkg.config import JUNK_KEYWORDS, LOW_PRIORITY_KEYWORDS, BOOST_KEYWORDS, DISTRO_MAP
-from archpkg.exceptions import PackageManagerNotFound, NetworkError, TimeoutError
+from archpkg.exceptions import PackageManagerNotFound, NetworkError, TimeoutError, CommandGenerationError
 from archpkg.search_aur import search_aur
 from archpkg.search_pacman import search_pacman
 from archpkg.search_flatpak import search_flatpak
@@ -37,12 +37,22 @@ from archpkg.logging_config import get_logger, PackageHelperLogger
 from archpkg.github_install import install_from_github, validate_github_url
 from archpkg.web import app as web_app
 from archpkg.config_manager import get_user_config, set_config_option
+from archpkg.config_manager import save_user_config
+from archpkg.config_manager import UserConfig
 from archpkg.update_manager import check_for_updates, trigger_update_check
 from archpkg.download_manager import install_updates, start_background_update_service, stop_background_update_service
 from archpkg.installed_apps import add_installed_package, get_all_installed_packages, get_packages_with_updates
 from archpkg.suggest import suggest_apps, list_purposes
 from archpkg.cache import get_cache_manager, CacheConfig
 from archpkg.pkgs_org import PkgsOrgClient
+from archpkg.snapshot import (
+    create_snapshot, 
+    list_snapshots, 
+    restore_snapshot, 
+    delete_snapshot,
+    detect_snapshot_tool
+)
+from archpkg.advisor import apply_user_mode_defaults, get_arch_news, assess_aur_trust
 
 console = Console()
 logger = get_logger(__name__)
@@ -813,7 +823,7 @@ def main() -> None:
         return
     
     # Check if first argument is a known subcommand
-    known_commands = ['search', 'suggest', 'upgrade', 'web', 'update', 'config', 'list-installed', 'service']
+    known_commands = ['search', 'suggest', 'upgrade', 'web', 'update', 'config', 'list-installed', 'service', 'cleanup', 'snapshot', 'setup']
     
     # If no arguments or first arg is not a known command, inject 'search' for backward compatibility
     if len(sys.argv) > 1 and sys.argv[1] not in known_commands and not sys.argv[1].startswith('-'):
@@ -1126,10 +1136,26 @@ def search(
     table.add_column("Index", style="cyan", no_wrap=True)
     table.add_column("Package Name", style="green")
     table.add_column("Source", style="blue")
+    table.add_column("Trust", style="yellow", no_wrap=True)
     table.add_column("Description", style="magenta")
 
     for idx, (pkg, desc, source) in enumerate(top_matches, 1):
-        table.add_row(str(idx), pkg, source, desc or "No description")
+        # Calculate trust score for AUR packages
+        trust_display = "-"
+        if source == 'aur':
+            try:
+                trust_result = assess_aur_trust(pkg)
+                score = trust_result.get('score', 0)
+                if score >= 75:
+                    trust_display = f"[green]{score}[/green]"
+                elif score >= 50:
+                    trust_display = f"[yellow]{score}[/yellow]"
+                else:
+                    trust_display = f"[red]{score}[/red]"
+            except Exception:
+                trust_display = "?"
+        
+        table.add_row(str(idx), pkg, source, trust_display, desc or "No description")
 
     console.print(table)
     
@@ -1175,6 +1201,24 @@ def search(
         selected_pkg = top_matches[choice - 1]
         pkg, desc, source = selected_pkg
         logger.info(f"User selected package: '{pkg}' from source '{source}'")
+
+        # Normal mode safety abstraction for AUR packages
+        config = get_user_config()
+        if source == 'aur' and config.auto_review_aur_trust:
+            trust = assess_aur_trust(pkg)
+            score = trust.get('score', 0)
+            confidence = trust.get('confidence', 'unknown')
+            reason = trust.get('reason', 'No details')
+
+            trust_color = "green" if score >= 70 else ("yellow" if score >= 40 else "red")
+            console.print(f"[bold {trust_color}]AUR trust check[/bold {trust_color}] for [cyan]{pkg}[/cyan]: "
+                         f"score={score}/100, confidence={confidence}")
+            console.print(f"[dim]{reason}[/dim]")
+
+            if config.user_mode == 'normal' and score < 40:
+                console.print("[red]This package has low trust signals. Blocking install in normal mode.[/red]")
+                console.print("[yellow]Use advanced mode to proceed manually: archpkg setup --mode advanced[/yellow]")
+                raise typer.Exit(1)
         
         command = generate_command(pkg, source)
         
@@ -1269,14 +1313,70 @@ def upgrade(
 
 
 @app.command()
+def gui(
+    debug_mode: bool = Option(False, "--debug", help="Enable debug mode")
+) -> None:
+    """
+    Launch the native desktop GUI for package management.
+    
+    The GUI provides a professional interface for:
+    - Searching and installing packages across all sources
+    - Managing installed packages
+    - System maintenance (updates, cleanup, snapshots)
+    - Configuring settings and user profiles
+    
+    Supports all distributions (Arch, Debian, Fedora, openSUSE, etc.)
+    """
+    try:
+        from archpkg.gui import launch_gui
+        
+        if debug_mode:
+            PackageHelperLogger.set_debug_mode(True)
+        
+        console.print("[cyan]Launching desktop GUI...[/cyan]")
+        launch_gui()
+        
+    except ImportError as e:
+        console.print("[red]GUI dependencies not installed.[/red]")
+        console.print("Install with: pip install PyQt5")
+        console.print(f"Error: {str(e)}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Failed to launch GUI: {str(e)}[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def web(
     port: int = Option(5000, "--port", "-p", help="Port to run the web server on"),
     host: str = Option("127.0.0.1", "--host", help="Host to bind the web server to"),
     debug_mode: bool = Option(False, "--debug", help="Enable debug mode")
 ) -> None:
     """
-    Launch the web interface for package management.
+    [DEPRECATED] Launch the web interface for package management.
+    
+    Note: The web interface is deprecated. Please use the native GUI instead:
+        archpkg gui
+    
+    The native GUI provides better performance, security, and user experience.
     """
+    console.print("[yellow]Warning: The web interface is deprecated.[/yellow]")
+    console.print("[yellow]Please use the native GUI instead: archpkg gui[/yellow]")
+    console.print()
+    
+    continue_anyway = typer.confirm("Do you want to continue with the web interface anyway?", default=False)
+    
+    if not continue_anyway:
+        console.print("[cyan]Launching native GUI instead...[/cyan]")
+        try:
+            from archpkg.gui import launch_gui
+            launch_gui()
+        except ImportError:
+            console.print("[red]GUI not available. Install with: pip install PyQt5[/red]")
+            console.print("[yellow]Falling back to web interface...[/yellow]")
+        else:
+            return
+    
     console.print(f"[blue]Starting web interface at http://{host}:{port}[/blue]")
     console.print("[yellow]Press Ctrl+C to stop the server[/yellow]")
     try:
@@ -1286,9 +1386,107 @@ def web(
 
 
 @app.command()
+def setup(
+    mode: Optional[str] = Option(None, "--mode", help="Choose profile: normal (recommended) or advanced"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """Interactive onboarding for normal vs advanced user profiles."""
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    selected_mode = mode
+    if not selected_mode:
+        console.print("[bold cyan]Choose your profile:[/bold cyan]")
+        console.print("  1) normal (recommended) - archpkg handles updates/news/trust checks automatically")
+        console.print("  2) advanced - full manual control")
+        choice = typer.prompt("Enter choice", default="1").strip()
+        selected_mode = 'advanced' if choice == '2' else 'normal'
+
+    selected_mode = selected_mode.strip().lower()
+    if selected_mode not in ('normal', 'advanced'):
+        console.print("[red]Invalid mode. Use: normal or advanced[/red]")
+        raise typer.Exit(1)
+
+    defaults = apply_user_mode_defaults(selected_mode)
+    cfg = get_user_config()
+    for key, value in defaults.items():
+        setattr(cfg, key, value)
+    save_user_config(cfg)
+
+    if selected_mode == 'normal':
+        console.print("[green]Normal profile enabled.[/green]")
+        console.print("- Auto-update and advice enabled")
+        console.print("- Arch news checked before updates")
+        console.print("- AUR trust checks enabled")
+        console.print("- Snapshot before updates enabled")
+        
+        # On Arch, offer to install background monitoring service
+        import distro
+        detected_distro = distro.id().lower()
+        distro_family = DISTRO_MAP.get(detected_distro, detected_distro)
+        
+        if distro_family == 'arch':
+            console.print("\n[cyan]Background monitoring service available for normal mode:[/cyan]")
+            console.print("  - Checks for Arch news, updates, and low-trust packages every 6 hours")
+            console.print("  - Sends desktop notifications when action is recommended")
+            
+            if typer.confirm("Would you like to enable background monitoring?", default=True):
+                try:
+                    import subprocess
+                    from pathlib import Path
+                    
+                    # Find systemd directory
+                    project_root = Path(__file__).parent.parent
+                    systemd_dir = project_root / 'systemd'
+                    service_manager = systemd_dir / 'service-manager.sh'
+                    
+                    if service_manager.exists():
+                        console.print("[cyan]Installing monitoring service...[/cyan]")
+                        
+                        # Install service
+                        result = subprocess.run(
+                            [str(service_manager), 'install'],
+                            capture_output=True,
+                            text=True
+                        )
+                        
+                        if result.returncode == 0:
+                            # Enable and start timer
+                            result = subprocess.run(
+                                [str(service_manager), 'enable'],
+                                capture_output=True,
+                                text=True
+                            )
+                            
+                            if result.returncode == 0:
+                                console.print("[green]✓ Background monitoring service enabled![/green]")
+                                console.print("[dim]  Run 'systemctl --user status archpkg-monitor.timer' to check status[/dim]")
+                            else:
+                                console.print("[yellow]Service installed but failed to enable. You can enable it manually with:[/yellow]")
+                                console.print(f"[dim]  {service_manager} enable[/dim]")
+                        else:
+                            console.print("[yellow]Failed to install service automatically.[/yellow]")
+                            console.print(f"[dim]You can install it manually: {service_manager} install[/dim]")
+                    else:
+                        console.print("[yellow]Service files not found. Skipping service installation.[/yellow]")
+                        console.print("[dim]If you installed via pip, service files may not be available.[/dim]")
+                        
+                except Exception as e:
+                    console.print(f"[yellow]Could not install monitoring service: {str(e)}[/yellow]")
+                    console.print("[dim]You can install it manually later using systemd/service-manager.sh[/dim]")
+            else:
+                console.print("[dim]You can enable it later with: systemd/service-manager.sh install && systemd/service-manager.sh enable[/dim]")
+    else:
+        console.print("[green]Advanced profile enabled.[/green]")
+        console.print("- Manual control preserved")
+
+
+@app.command()
 def update(
     packages: Optional[List[str]] = Argument(None, help="Specific packages to update (all if not specified)"),
     check_only: bool = Option(False, "--check-only", "-c", help="Only check for updates, don't install"),
+    snapshot: bool = Option(False, "--snapshot", help="Create a system snapshot before updating (Arch only)"),
+    news_only: bool = Option(False, "--news-only", help="Show Arch news via paru without installing updates"),
     debug: bool = Option(False, "--debug", help="Enable debug logging")
 ) -> None:
     """
@@ -1296,6 +1494,74 @@ def update(
     """
     if debug:
         PackageHelperLogger.set_debug_mode(True)
+
+    import distro
+    import subprocess
+    detected_distro = distro.id().lower()
+    distro_family = DISTRO_MAP.get(detected_distro, detected_distro)
+
+    config = get_user_config()
+
+    if news_only:
+        if distro_family != 'arch':
+            console.print("[red]--news-only is currently supported only on Arch-based distributions.[/red]")
+            raise typer.Exit(1)
+        try:
+            result = subprocess.run(['paru', '-Pw'], check=False)
+            if result.returncode != 0:
+                console.print("[red]Failed to fetch Arch news with paru.[/red]")
+                raise typer.Exit(1)
+            return
+        except FileNotFoundError:
+            console.print("[red]paru is required for --news-only.[/red]")
+            raise typer.Exit(1)
+
+    # In normal profile, auto-enable snapshot for full system updates on Arch
+    effective_snapshot = snapshot or (
+        distro_family == 'arch' and
+        config.user_mode == 'normal' and
+        config.auto_snapshot_before_update and
+        not check_only and
+        not packages
+    )
+
+    if effective_snapshot:
+        if distro_family != 'arch':
+            console.print("[yellow]Snapshot option is currently tuned for Arch workflows; continuing without snapshot.[/yellow]")
+        else:
+            console.print("[blue]Creating pre-update snapshot...[/blue]")
+            try:
+                if create_snapshot(comment="Pre-update snapshot"):
+                    console.print("[green]Snapshot created successfully.[/green]")
+                else:
+                    console.print("[red]Snapshot creation failed.[/red]")
+                    raise typer.Exit(1)
+            except Exception as e:
+                console.print(f"[red]Snapshot creation failed: {str(e)}[/red]")
+                raise typer.Exit(1)
+
+    if distro_family == 'arch' and not check_only and not packages:
+        if config.proactive_system_advice:
+            console.print("[bold cyan]System advice:[/bold cyan] Keep mirrors fresh, ensure enough disk space, and avoid interrupting updates.")
+
+        if config.auto_handle_arch_news:
+            news = get_arch_news()
+            if news.get('available') and news.get('has_news'):
+                console.print("[yellow]Unread Arch news detected. Reviewing news before update...[/yellow]")
+                if news.get('output'):
+                    console.print(news['output'])
+
+        # Prefer paru for full system updates (official repos + AUR + Arch news flow)
+        try:
+            console.print("[blue]Running full system update with paru...[/blue]")
+            result = subprocess.run(['paru', '-Syu'])
+            if result.returncode == 0:
+                console.print("[green]System update completed successfully.[/green]")
+                return
+            console.print("[red]paru update failed.[/red]")
+            raise typer.Exit(1)
+        except FileNotFoundError:
+            console.print("[yellow]paru not found; falling back to default update flow.[/yellow]")
 
     if check_only:
         console.print("[blue]Checking for updates...[/blue]")
@@ -1454,6 +1720,406 @@ def service(
         console.print(f"[red]Unknown action: {action}[/red]")
         console.print("Available actions: start, stop, status")
         raise typer.Exit(1)
+
+
+@app.command()
+def cleanup(
+    target: str = Argument(..., help="What to clean: orphans, cache"),
+    dry_run: bool = Option(False, "--dry-run", help="Show what would be removed without removing"),
+    all_cache: bool = Option(False, "--all", help="Remove all cached packages (for cache cleanup)"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Clean up orphaned packages or package cache (Arch Linux only).
+    
+    Examples:
+        archpkg cleanup orphans --dry-run
+        archpkg cleanup cache
+        archpkg cleanup cache --all
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+    
+    import distro
+    detected_distro = distro.id().lower()
+    distro_family = DISTRO_MAP.get(detected_distro, detected_distro)
+    
+    if distro_family != 'arch':
+        console.print("[red]Cleanup commands are currently only supported on Arch-based distributions.[/red]")
+        raise typer.Exit(1)
+    
+    # Check for paru
+    import subprocess
+    try:
+        subprocess.run(['which', 'paru'], capture_output=True, check=True)
+    except:
+        console.print("[red]paru is required for cleanup operations.[/red]")
+        console.print("Install paru: https://github.com/morganamilo/paru")
+        raise typer.Exit(1)
+    
+    if target == "orphans":
+        console.print("[cyan]Checking for orphaned packages...[/cyan]")
+        
+        # Find orphaned packages
+        try:
+            result = subprocess.run(
+                ['paru', '-Qdtq'],
+                capture_output=True,
+                text=True,
+                check=False
+            )
+            
+            orphans = [pkg.strip() for pkg in result.stdout.split('\n') if pkg.strip()]
+            
+            if not orphans:
+                console.print("[green]No orphaned packages found.[/green]")
+                return
+            
+            console.print(f"[yellow]Found {len(orphans)} orphaned package(s):[/yellow]")
+            for pkg in orphans:
+                console.print(f"  - {pkg}")
+            
+            if dry_run:
+                console.print("\n[cyan]Dry run mode - no packages will be removed.[/cyan]")
+                console.print(f"[cyan]To remove these packages, run: archpkg cleanup orphans[/cyan]")
+                return
+            
+            # Confirm removal
+            if typer.confirm("\nDo you want to remove these orphaned packages?"):
+                console.print("[cyan]Removing orphaned packages...[/cyan]")
+                remove_cmd = ['paru', '-Rns'] + orphans
+                result = subprocess.run(remove_cmd)
+                
+                if result.returncode == 0:
+                    console.print("[green]Orphaned packages removed successfully![/green]")
+                else:
+                    console.print("[red]Failed to remove orphaned packages.[/red]")
+                    raise typer.Exit(1)
+            else:
+                console.print("[yellow]Cleanup cancelled.[/yellow]")
+        
+        except Exception as e:
+            console.print(f"[red]Error finding orphaned packages: {str(e)}[/red]")
+            raise typer.Exit(1)
+    
+    elif target == "cache":
+        console.print("[cyan]Cleaning package cache...[/cyan]")
+        
+        if all_cache:
+            console.print("[yellow]Warning: This will remove ALL cached packages.[/yellow]")
+            if not typer.confirm("Are you sure you want to remove all cached packages?"):
+                console.print("[yellow]Cache cleanup cancelled.[/yellow]")
+                return
+            cmd = ['paru', '-Scc']
+        else:
+            console.print("[yellow]This will remove uninstalled cached packages.[/yellow]")
+            cmd = ['paru', '-Sc']
+        
+        try:
+            result = subprocess.run(cmd)
+            if result.returncode == 0:
+                console.print("[green]Package cache cleaned successfully![/green]")
+            else:
+                console.print("[red]Failed to clean package cache.[/red]")
+                raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]Error cleaning cache: {str(e)}[/red]")
+            raise typer.Exit(1)
+    
+    else:
+        console.print(f"[red]Unknown cleanup target: {target}[/red]")
+        console.print("Available targets: orphans, cache")
+        raise typer.Exit(1)
+
+
+@app.command()
+def audit(
+    verbose: bool = Option(False, "--verbose", "-v", help="Show detailed information for all packages"),
+    show_all: bool = Option(False, "--all", "-a", help="Show all packages, not just low-trust ones"),
+    threshold: int = Option(40, "--threshold", "-t", help="Trust score threshold for warnings (default: 40)"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Audit trust scores of installed AUR packages (Arch Linux only).
+    
+    Checks all AUR packages installed on your system and reports any with low trust scores
+    based on votes, popularity, maintainer status, and whether they're out of date.
+    
+    Examples:
+        archpkg audit                    # Show warnings for low-trust packages
+        archpkg audit --verbose          # Show detailed info for all packages
+        archpkg audit --all              # Show trust scores for all AUR packages
+        archpkg audit --threshold 60     # Custom threshold for warnings
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+    
+    import distro
+    import subprocess
+    
+    detected_distro = distro.id().lower()
+    distro_family = DISTRO_MAP.get(detected_distro, detected_distro)
+    
+    if distro_family != 'arch':
+        console.print("[red]Trust audit is only available on Arch-based distributions.[/red]")
+        raise typer.Exit(1)
+    
+    # Check for paru or yay
+    aur_helper = None
+    for helper in ['paru', 'yay']:
+        try:
+            subprocess.run(['which', helper], capture_output=True, check=True)
+            aur_helper = helper
+            break
+        except:
+            continue
+    
+    if not aur_helper:
+        console.print("[red]paru or yay is required for trust auditing.[/red]")
+        console.print("Install paru: https://github.com/morganamilo/paru")
+        raise typer.Exit(1)
+    
+    console.print(f"[cyan]Auditing installed AUR packages using {aur_helper}...[/cyan]\n")
+    
+    # Get list of installed AUR packages
+    try:
+        result = subprocess.run(
+            [aur_helper, '-Qm'],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        # Parse package names from output (format: "pkgname version")
+        installed_aur = []
+        for line in result.stdout.split('\n'):
+            if line.strip():
+                parts = line.strip().split()
+                if parts:
+                    installed_aur.append(parts[0])
+        
+        if not installed_aur:
+            console.print("[green]No AUR packages installed.[/green]")
+            return
+        
+        console.print(f"[cyan]Found {len(installed_aur)} AUR package(s) to audit.[/cyan]\n")
+        
+    except subprocess.CalledProcessError:
+        console.print("[red]Failed to get list of installed AUR packages.[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        raise typer.Exit(1)
+    
+    # Audit each package
+    low_trust_packages = []
+    medium_trust_packages = []
+    high_trust_packages = []
+    failed_checks = []
+    
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+    
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        console=console,
+        transient=True
+    ) as progress:
+        task = progress.add_task("Auditing packages...", total=len(installed_aur))
+        
+        for pkg_name in installed_aur:
+            progress.update(task, description=f"Checking {pkg_name}...")
+            
+            try:
+                trust_result = assess_aur_trust(pkg_name)
+                score = trust_result.get('score', 0)
+                confidence = trust_result.get('confidence', 'unknown')
+                reason = trust_result.get('reason', 'No details')
+                
+                pkg_data = {
+                    'name': pkg_name,
+                    'score': score,
+                    'confidence': confidence,
+                    'reason': reason
+                }
+                
+                if score < threshold:
+                    low_trust_packages.append(pkg_data)
+                elif score < 70:
+                    medium_trust_packages.append(pkg_data)
+                else:
+                    high_trust_packages.append(pkg_data)
+                    
+            except Exception as e:
+                failed_checks.append({'name': pkg_name, 'error': str(e)})
+            
+            progress.update(task, advance=1)
+    
+    # Display results
+    console.print()
+    
+    if low_trust_packages:
+        console.print(f"[bold red]⚠ WARNING: {len(low_trust_packages)} low-trust package(s) found (score < {threshold}):[/bold red]\n")
+        for pkg in sorted(low_trust_packages, key=lambda x: x['score']):
+            console.print(f"  [red]✗[/red] [cyan]{pkg['name']}[/cyan] - Score: [red]{pkg['score']}/100[/red] ({pkg['confidence']})")
+            if verbose:
+                console.print(f"    [dim]{pkg['reason']}[/dim]")
+        console.print()
+    
+    if show_all or verbose:
+        if medium_trust_packages:
+            console.print(f"[bold yellow]⚡ {len(medium_trust_packages)} medium-trust package(s) (score {threshold}-69):[/bold yellow]\n")
+            for pkg in sorted(medium_trust_packages, key=lambda x: x['score'], reverse=True):
+                console.print(f"  [yellow]◆[/yellow] [cyan]{pkg['name']}[/cyan] - Score: [yellow]{pkg['score']}/100[/yellow] ({pkg['confidence']})")
+                if verbose:
+                    console.print(f"    [dim]{pkg['reason']}[/dim]")
+            console.print()
+        
+        if high_trust_packages:
+            console.print(f"[bold green]✓ {len(high_trust_packages)} high-trust package(s) (score ≥ 70):[/bold green]\n")
+            for pkg in sorted(high_trust_packages, key=lambda x: x['score'], reverse=True):
+                console.print(f"  [green]✓[/green] [cyan]{pkg['name']}[/cyan] - Score: [green]{pkg['score']}/100[/green] ({pkg['confidence']})")
+                if verbose:
+                    console.print(f"    [dim]{pkg['reason']}[/dim]")
+            console.print()
+    
+    if failed_checks:
+        console.print(f"[bold red]⚠ Failed to check {len(failed_checks)} package(s):[/bold red]\n")
+        for pkg in failed_checks:
+            console.print(f"  [red]?[/red] [cyan]{pkg['name']}[/cyan] - Error: {pkg['error']}")
+        console.print()
+    
+    # Summary
+    if not low_trust_packages and not failed_checks:
+        console.print(f"[bold green]✨ All {len(installed_aur)} AUR packages passed the trust audit![/bold green]")
+    elif not low_trust_packages:
+        console.print(f"[bold green]✨ No low-trust packages found![/bold green]")
+    else:
+        console.print(f"[bold yellow]💡 Recommendation:[/bold yellow] Review low-trust packages and consider:")
+        console.print("   - Checking if they're still maintained")
+        console.print("   - Looking for alternatives with higher trust scores")
+        console.print("   - Removing packages you no longer need")
+
+
+@app.command()
+def snapshot(
+    action: str = Argument(..., help="Action: create, list, restore, delete"),
+    snapshot_id: Optional[str] = Argument(None, help="Snapshot ID for restore/delete operations"),
+    comment: Optional[str] = Option(None, "--comment", "-c", help="Comment for snapshot creation"),
+    tool: Optional[str] = Option(None, "--tool", "-t", help="Force specific tool: timeshift, snapper"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """
+    Manage system snapshots for backup and restore.
+    
+    Supports: Timeshift, snapper
+    
+    Examples:
+        archpkg snapshot create --comment "Before major update"
+        archpkg snapshot list
+        archpkg snapshot restore 123
+        archpkg snapshot delete 123
+    """
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+    
+    try:
+        if action == "create":
+            console.print("[cyan]Creating system snapshot...[/cyan]")
+            detected_tool, _ = detect_snapshot_tool()
+            if detected_tool == 'none':
+                console.print("[red]No snapshot tool detected![/red]")
+                console.print("Install one of:")
+                console.print("  - Timeshift: sudo pacman -S timeshift")
+                console.print("  - snapper: sudo pacman -S snapper")
+                raise typer.Exit(1)
+            
+            success = create_snapshot(comment=comment, tool=tool)
+            if success:
+                console.print(f"[green]Snapshot created successfully using {detected_tool}![/green]")
+            else:
+                console.print("[red]Failed to create snapshot.[/red]")
+                raise typer.Exit(1)
+        
+        elif action == "list":
+            console.print("[cyan]Listing available snapshots...[/cyan]")
+            snapshots = list_snapshots(tool=tool, limit=20)
+            
+            if not snapshots:
+                console.print("[yellow]No snapshots found.[/yellow]")
+                return
+            
+            table = Table(title="Available Snapshots")
+            table.add_column("ID", style="cyan")
+            table.add_column("Date", style="green")
+            table.add_column("Description", style="yellow")
+            table.add_column("Tool", style="blue")
+            
+            for snap in snapshots:
+                table.add_row(
+                    snap.get('id', 'N/A'),
+                    snap.get('date', 'N/A'),
+                    snap.get('description', ''),
+                    snap.get('tool', 'unknown')
+                )
+            
+            console.print(table)
+        
+        elif action == "restore":
+            if not snapshot_id:
+                console.print("[red]Snapshot ID is required for restore operation.[/red]")
+                console.print("Usage: archpkg snapshot restore <snapshot_id>")
+                raise typer.Exit(1)
+            
+            console.print(f"[yellow]Warning: This will restore your system to snapshot {snapshot_id}.[/yellow]")
+            console.print("[yellow]A reboot will be required.[/yellow]")
+            
+            if not typer.confirm("Are you sure you want to restore this snapshot?"):
+                console.print("[yellow]Restore cancelled.[/yellow]")
+                return
+            
+            console.print("[cyan]Restoring snapshot...[/cyan]")
+            success = restore_snapshot(snapshot_id, tool=tool)
+            if success:
+                console.print("[green]Snapshot restore initiated successfully![/green]")
+                console.print("[yellow]Please reboot your system to complete the restore.[/yellow]")
+            else:
+                console.print("[red]Failed to restore snapshot.[/red]")
+                raise typer.Exit(1)
+        
+        elif action == "delete":
+            if not snapshot_id:
+                console.print("[red]Snapshot ID is required for delete operation.[/red]")
+                console.print("Usage: archpkg snapshot delete <snapshot_id>")
+                raise typer.Exit(1)
+            
+            if not typer.confirm(f"Are you sure you want to delete snapshot {snapshot_id}?"):
+                console.print("[yellow]Delete cancelled.[/yellow]")
+                return
+            
+            console.print("[cyan]Deleting snapshot...[/cyan]")
+            success = delete_snapshot(snapshot_id, tool=tool)
+            if success:
+                console.print("[green]Snapshot deleted successfully![/green]")
+            else:
+                console.print("[red]Failed to delete snapshot.[/red]")
+                raise typer.Exit(1)
+        
+        else:
+            console.print(f"[red]Unknown action: {action}[/red]")
+            console.print("Available actions: create, list, restore, delete")
+            raise typer.Exit(1)
+    
+    except (PackageManagerNotFound, CommandGenerationError) as e:
+        console.print(f"[red]Error: {str(e)}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Unexpected error: {str(e)}[/red]")
+        if debug:
+            import traceback
+            console.print(traceback.format_exc())
+        raise typer.Exit(1)
+
 
 if __name__ == '__main__':
     app()

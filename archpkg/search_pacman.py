@@ -39,61 +39,75 @@ def search_pacman(query: str, cache_manager: Optional[object] = None) -> List[Tu
             logger.info(f"Retrieved {len(cached_results)} pacman results from cache")
             return cached_results
 
-    # Check if pacman is available and working
-    logger.debug("Checking pacman availability")
+    # Check if paru or pacman is available and working (prefer paru)
+    use_paru = False
+    logger.debug("Checking paru/pacman availability")
     try:
         subprocess.run(
-            ['pacman', '--version'],
+            ['paru', '--version'],
             capture_output=True,
             check=True,
             timeout=TIMEOUTS['command_check']
         )
-        logger.debug("Pacman is available and responsive")
-    except FileNotFoundError:
-        logger.debug("pacman command not found")
-        raise PackageManagerNotFound("pacman command not found. This system may not be Arch-based.")
-    except subprocess.CalledProcessError as e:
-        logger.debug(f"Pacman version check failed with return code {e.returncode}")
-        raise PackageSearchException("pacman is installed but not working properly.")
-    except subprocess.TimeoutExpired:
-        logger.debug("Pacman version check timed out")
-        raise TimeoutError(
-            "pacman is not responding. The package manager may be locked or misconfigured."
-        )
+        use_paru = True
+        logger.debug("paru is available, using it for search")
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        logger.debug("paru not available, checking pacman")
+        try:
+            subprocess.run(
+                ['pacman', '--version'],
+                capture_output=True,
+                check=True,
+                timeout=TIMEOUTS['command_check']
+            )
+            logger.debug("pacman is available and responsive")
+        except FileNotFoundError:
+            logger.debug("pacman command not found")
+            raise PackageManagerNotFound("pacman command not found. This system may not be Arch-based.")
+        except subprocess.CalledProcessError as e:
+            logger.debug(f"Pacman version check failed with return code {e.returncode}")
+            raise PackageSearchException("pacman is installed but not working properly.")
+        except subprocess.TimeoutExpired:
+            logger.debug("Pacman version check timed out")
+            raise TimeoutError(
+                "pacman is not responding. The package manager may be locked or misconfigured."
+            )
 
+    # Use selected package manager for search
+    search_cmd = 'paru' if use_paru else 'pacman'
     try:
-        logger.debug(f"Executing pacman search with timeout {TIMEOUTS['pacman']}s")
+        logger.debug(f"Executing {search_cmd} search with timeout {TIMEOUTS['pacman']}s")
         # IMPROVED: Use config timeout value
         result = subprocess.run(
-            ['pacman', '-Ss', query.strip()],
+            [search_cmd, '-Ss', query.strip()],
             capture_output=True,
             text=True,
             timeout=TIMEOUTS['pacman'],
             check=False
         )
 
-        logger.debug(f"Pacman search completed with return code: {result.returncode}")
+        logger.debug(f"{search_cmd} search completed with return code: {result.returncode}")
 
-        # Handle common pacman exit codes
+        # Handle common pacman/paru exit codes
         if result.returncode == 1 and not result.stdout.strip():
-            logger.info("Pacman search found no matches (normal result)")
+            logger.info(f"{search_cmd} search found no matches (normal result)")
             return []
         elif result.returncode != 0:
             error_msg = result.stderr.strip()
-            logger.debug(f"Pacman search failed with error: {error_msg}")
+            logger.debug(f"{search_cmd} search failed with error: {error_msg}")
             
             if "could not" in error_msg.lower():
-                logger.debug("Pacman database issue detected")
+                logger.debug("Package manager database issue detected")
                 raise PackageSearchException(
-                    "pacman database not initialized or corrupted. Try: sudo pacman -Syu"
+                    f"{search_cmd} database not initialized or corrupted. Try: sudo {search_cmd} -Syu"
                 )
             else:
-                logger.debug(f"Pacman search failed with unknown error: {error_msg}")
-                raise PackageSearchException(f"pacman search failed: {error_msg or 'Unknown error'}")
+                logger.debug(f"{search_cmd} search failed with unknown error: {error_msg}")
+                raise PackageSearchException(f"{search_cmd} search failed: {error_msg or 'Unknown error'}")
 
         output = result.stdout.strip()
         if not output:
-            logger.info("Pacman search returned empty output")
+            logger.info(f"{search_cmd} search returned empty output")
             return []
 
         logger.debug("Parsing pacman search results")

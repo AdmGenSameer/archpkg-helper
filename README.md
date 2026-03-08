@@ -35,6 +35,13 @@ archpkg-helper is designed to work across Linux distributions. While originally 
 
 ## Features
 
+- **Native Desktop GUI**: Professional PyQt5-based graphical interface for package management
+  - Cross-distro support (Arch, Debian, Ubuntu, Fedora, openSUSE, etc.)
+  - Search, install, and remove packages with visual feedback
+  - Real-time trust scores for AUR packages
+  - System maintenance tools (updates, cleanup, snapshots)
+  - Settings management with user profiles
+  - Dark theme professional design
 - **Purpose-based App Suggestions**: Get app recommendations based on what you want to do (e.g., "video editing", "office work", "programming")
 - **Intelligent Query Matching**: Natural language processing to understand user intent (e.g., "apps to edit videos" → video editing)
 - Search for packages and generate install commands for:
@@ -44,6 +51,7 @@ archpkg-helper is designed to work across Linux distributions. While originally 
 - One-command setup via `install.sh`
 - **Batch installation** - Install multiple packages at once with progress tracking
 - **🔄 Auto-update system** with background checking, secure downloads, and user control
+- **🧰 Arch maintenance commands** for orphan cleanup, cache cleanup, snapshot management, and Arch news via `paru`
 
 ## Quick Start (install.sh)
 
@@ -64,8 +72,12 @@ wget -qO- https://raw.githubusercontent.com/AdmGenSameer/archpkg-helper/main/ins
 ```
 
 Notes:
-- The installer ensures Python, pip, and pipx are available and installs the CLI via pipx.
+- The installer ensures Python, pip, pipx, and PyQt5 are available
+- Installs both CLI and GUI automatically
 - You may be prompted for sudo to install prerequisites on your distro.
+- On Arch-based systems, installer now asks for a profile:
+  - `normal` (recommended): automatic advice + news/trust-aware updates
+  - `advanced`: manual control
 
 ## Installation (Recommended: pipx)
 
@@ -138,18 +150,41 @@ However, using pipx is strongly recommended instead of breaking system protectio
 
 After installation, the CLI is available as `archpkg`.
 
-## Web Interface
+## Native Desktop GUI
 
-ArchPkg Helper also provides a web interface for a more user-friendly experience:
+ArchPkg Helper provides a professional native desktop application for graphical package management:
 
 ```sh
-archpkg --web
+# Launch the GUI (works immediately after install.sh)
+archpkg gui
 ```
 
-This starts a web server at `http://localhost:5000` where you can:
-- Browse a descriptive home page explaining the tool
-- Search for packages using a web form
-- View results with copy-to-clipboard functionality
+**GUI Features:**
+- **Search & Install Tab**: Search packages across all sources with real-time trust scores
+  - Visual trust indicators (color-coded)
+  - Package details panel
+  - One-click install/remove
+  - Live output log
+- **Installed Packages Tab**: View all installed packages
+  - Refresh package lists
+  - AUR trust audit (Arch only)
+- **System Maintenance Tab**: System management tools
+  - Check and install updates
+  - Clean orphaned packages (Arch)
+  - Clean package cache (Arch)
+  - Create/list system snapshots (Arch)
+  - Check Arch news
+- **Settings Tab**: Configure user profiles and automation
+  - Normal vs Advanced mode
+  - Automation preferences
+  - System information
+
+**Notes:**
+- PyQt5 is automatically installed when using `install.sh`
+- Both CLI and GUI are available immediately after installation
+- For manual pip/pipx installs: `pip install PyQt5` or `pipx install archpkg[gui]`
+
+The GUI works on all distributions and automatically adapts to your system's package manager.
 
 ---
 
@@ -190,6 +225,82 @@ archpkg search firefox
 
 
 This command will search for the `firefox` package across multiple package managers (e.g., pacman, AUR, apt).
+
+#### 3. Arch Linux Maintenance Commands (paru-powered)
+
+```sh
+# Show Arch news (no updates)
+archpkg update --news-only
+
+# Create snapshot before updates
+archpkg update --snapshot
+
+# Find orphaned packages without removing
+archpkg cleanup orphans --dry-run
+
+# Remove orphaned packages
+archpkg cleanup orphans
+
+# Clean package cache
+archpkg cleanup cache
+
+# Snapshot management
+archpkg snapshot create --comment "Before full update"
+archpkg snapshot list
+
+# Audit trust scores of installed AUR packages
+archpkg audit                    # Show only low-trust packages
+archpkg audit --verbose          # Show detailed info for all packages
+archpkg audit --all              # Show trust scores for all AUR packages
+archpkg audit --threshold 60     # Custom threshold for warnings
+```
+
+**Trust Score Features:**
+- 🔍 **Search Results**: AUR packages now show trust scores (0-100) in search results with color coding
+- 🛡️ **Trust Audit**: Check all installed AUR packages for trust issues (low votes, unmaintained, out-of-date)
+- 📊 **Automatic Checks**: Normal mode automatically reviews AUR package trust before installation
+- 🔔 **Background Monitoring**: Optional systemd service checks system health every 6 hours (normal mode only)
+
+#### 4. Profile / Abstraction Mode
+
+```sh
+# Run onboarding anytime
+archpkg setup
+
+# Force a profile directly
+archpkg setup --mode normal
+archpkg setup --mode advanced
+```
+
+- `normal` profile (recommended): archpkg handles Arch news checks, AUR trust review, and safer update defaults for you.
+- `advanced` profile: keeps actions manual and transparent.
+
+#### 5. Background Monitoring Service (Arch Linux - Normal Mode)
+
+The background monitoring service can be enabled during `archpkg setup` on Arch Linux. It runs every 6 hours to check for:
+- New Arch news announcements
+- Available system updates
+- Low-trust AUR packages
+
+Manual service management:
+```sh
+# Check service status
+systemctl --user status archpkg-monitor.timer
+
+# View recent logs
+journalctl --user -u archpkg-monitor.service -n 50
+
+# Stop the service
+systemctl --user stop archpkg-monitor.timer
+
+# Restart the service
+systemctl --user start archpkg-monitor.timer
+
+# Run a check immediately
+python3 -m archpkg.monitor --once
+```
+
+The service sends desktop notifications when action is recommended (e.g., new Arch news, updates available, low-trust packages detected).
 
 #### 2. Install Multiple Packages (Batch Installation)
 #### 3. Install a Package

@@ -89,7 +89,7 @@ We recommend using `pipx` for development to avoid conflicts with system package
    ```bash
    # pacman is pre-installed
    # Install AUR helper (optional but recommended for testing)
-   sudo pacman -S yay
+   sudo pacman -S paru
    # Install flatpak if needed
    sudo pacman -S flatpak
    ```

@@ -1,0 +1,14 @@
+[Unit]
+Description=archpkg Background Monitor Timer
+Documentation=https://github.com/yourusername/archpkg-helper
+
+[Timer]
+# Run 5 minutes after boot
+OnBootSec=5min
+# Then run every 6 hours
+OnUnitActiveSec=6h
+# If the system was off, run on next boot
+Persistent=true
+
+[Install]
+WantedBy=timers.target

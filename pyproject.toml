@@ -21,6 +21,8 @@ dependencies = [
 
 [project.optional-dependencies]
 github = ["GitPython"]
+gui = ["PyQt5>=5.15.0"]
+all = ["GitPython", "PyQt5>=5.15.0"]
 
 [project.scripts]
 archpkg = "archpkg.cli:main"

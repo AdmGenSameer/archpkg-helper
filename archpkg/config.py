@@ -45,8 +45,11 @@ DISTRO_MAP = {
     "sles": "suse"
 }
 
-# AUR helpers in order of preference
-AUR_HELPERS = ['yay', 'paru', 'trizen', 'yaourt']
+# AUR helpers in order of preference (paru is now preferred)
+AUR_HELPERS = ['paru', 'yay', 'trizen', 'yaourt']
+
+# Preferred Arch package manager (paru handles both official repos and AUR)
+PREFERRED_ARCH_HELPER = 'paru'
 
 # Logging configuration
 LOGGING_CONFIG = {

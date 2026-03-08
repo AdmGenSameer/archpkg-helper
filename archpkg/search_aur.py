@@ -81,8 +81,10 @@ def search_aur(query: str, cache_manager: Optional[object] = None) -> List[Tuple
             if isinstance(pkg, dict) and 'Name' in pkg:
                 name = pkg['Name']
                 description = pkg.get('Description', 'No description')
+                votes = pkg.get('NumVotes', 0)
+                popularity = pkg.get('Popularity', 0.0)
                 processed_results.append((name, description, 'aur'))
-                logger.debug(f"Found AUR package: {name}")
+                logger.debug(f"Found AUR package: {name} (votes: {votes}, popularity: {popularity:.2f})")
             else:
                 logger.debug(f"Skipping invalid AUR package entry: {pkg}")
         
@@ -122,3 +124,73 @@ def search_aur(query: str, cache_manager: Optional[object] = None) -> List[Tuple
     except Exception as e:
         PackageHelperLogger.log_exception(logger, "Unexpected error during AUR search", e)
         raise PackageSearchException(f"AUR search failed: {str(e)}")
+
+def get_aur_package_details(package_name: str) -> Optional[dict]:
+    """Get detailed information about a specific AUR package.
+    
+    Args:
+        package_name: Exact name of the AUR package
+        
+    Returns:
+        Optional[dict]: Package details including trust metrics, or None if not found
+        
+    Raises:
+        NetworkError: When network connection fails
+        TimeoutError: When request times out
+        PackageSearchException: For other errors
+    """
+    logger.info(f"Fetching detailed AUR info for package: '{package_name}'")
+    
+    if not package_name or not package_name.strip():
+        logger.error("Empty package name provided")
+        return None
+    
+    # Use AUR RPC info endpoint for exact package lookup
+    url = f"https://aur.archlinux.org/rpc/?v=5&type=info&arg={package_name.strip()}"
+    logger.debug(f"AUR info API URL: {url}")
+    
+    try:
+        response = requests.get(url, timeout=TIMEOUTS['aur'])
+        response.raise_for_status()
+        data = response.json()
+        
+        if not isinstance(data, dict):
+            logger.error("Invalid response format from AUR")
+            return None
+        
+        results = data.get("results", [])
+        if not results or not isinstance(results, list):
+            logger.info(f"Package '{package_name}' not found in AUR")
+            return None
+        
+        pkg_info = results[0]
+        
+        # Extract comprehensive package information
+        details = {
+            'name': pkg_info.get('Name', package_name),
+            'version': pkg_info.get('Version', 'unknown'),
+            'description': pkg_info.get('Description', 'No description'),
+            'url': pkg_info.get('URL', ''),
+            'votes': pkg_info.get('NumVotes', 0),
+            'popularity': pkg_info.get('Popularity', 0.0),
+            'maintainer': pkg_info.get('Maintainer', 'orphan'),
+            'first_submitted': pkg_info.get('FirstSubmitted'),
+            'last_modified': pkg_info.get('LastModified'),
+            'out_of_date': pkg_info.get('OutOfDate'),
+            'depends': pkg_info.get('Depends', []),
+            'makedepends': pkg_info.get('MakeDepends', []),
+            'license': pkg_info.get('License', []),
+            'keywords': pkg_info.get('Keywords', []),
+            'aur_url': f"https://aur.archlinux.org/packages/{package_name}"
+        }
+        
+        logger.info(f"Retrieved detailed info for '{package_name}': "
+                   f"{details['votes']} votes, {details['popularity']:.2f} popularity")
+        return details
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Network error fetching AUR package details: {str(e)}")
+        raise NetworkError(f"Failed to fetch package details: {str(e)}")
+    except Exception as e:
+        PackageHelperLogger.log_exception(logger, "Unexpected error fetching AUR details", e)
+        return None

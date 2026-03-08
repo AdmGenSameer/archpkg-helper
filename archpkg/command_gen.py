@@ -109,15 +109,22 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
     # Generate commands based on source
     try:
         if source == 'pacman':
-            logger.debug("Generating pacman install command")
-            if not check_command_availability('pacman'):
-                logger.error("pacman command not available")
+            logger.debug("Generating Arch package install command (using paru)")
+            # Try paru first (handles both repos and AUR), fallback to pacman
+            if check_command_availability('paru'):
+                command = f"paru -S {pkg_name}"
+                logger.info(f"Generated paru command: {command}")
+                return command
+            elif check_command_availability('pacman'):
+                command = f"sudo pacman -S {pkg_name}"
+                logger.info(f"Generated pacman command (paru not available): {command}")
+                return command
+            else:
+                logger.error("Neither paru nor pacman command available")
                 raise PackageManagerNotFound(
-                    "pacman is not installed or not available in PATH. "
-                    "Install pacman or run on an Arch-based system."
+                    "Neither paru nor pacman is installed. "
+                    "Install paru for better AUR support: https://github.com/morganamilo/paru"
                 )
-            command = f"sudo pacman -S {pkg_name}"
-            logger.info(f"Generated pacman command: {command}")
             return command
             
         elif source == 'aur':
@@ -136,11 +143,13 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
                 logger.error("No AUR helper found on system")
                 raise PackageManagerNotFound(
                     "No AUR helper found. Install one of the following:\n"
+                    "- paru (recommended): https://github.com/morganamilo/paru\n"
                     "- yay: sudo pacman -S yay\n"
-                    "- paru: sudo pacman -S paru\n"
                     "- Or build manually from AUR"
                 )
-            command = f"{available_helper} -S {pkg_name}"
+            # Add --review flag for paru to enable PKGBUILD review
+            review_flag = " --review" if available_helper == 'paru' else ""
+            command = f"{available_helper} -S{review_flag} {pkg_name}"
             logger.info(f"Generated AUR command: {command}")
             return command
             
@@ -231,7 +240,7 @@ def get_install_suggestions(source: str) -> List[str]:
             "Consider using the Flatpak or Snap version if available"
         ],
         'aur': [
-            "Install an AUR helper like yay: sudo pacman -S yay",
+            "Install an AUR helper like paru: sudo pacman -S paru",
             "Or manually build from AUR following the Arch Wiki"
         ],
         'flatpak': [

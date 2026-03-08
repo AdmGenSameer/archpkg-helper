@@ -62,9 +62,9 @@ Depending on your Linux distribution:
 
 - Arch Linux / Manjaro
    - pacman is pre-installed.
-   - Install yay for AUR support:
+    - Install paru for AUR support:
        ```bash
-       sudo pacman -S yay
+      sudo pacman -S paru
        ```
    - Install flatpak if needed:
       ```bash
