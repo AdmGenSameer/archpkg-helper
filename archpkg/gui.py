@@ -40,6 +40,7 @@ from archpkg.command_gen import generate_command
 from archpkg.config_manager import get_user_config, save_user_config, set_config_option
 from archpkg.advisor import assess_aur_trust, get_arch_news, apply_user_mode_defaults
 from archpkg.logging_config import get_logger
+from archpkg.search_ranking import deduplicate_packages, get_top_matches
 
 logger = get_logger(__name__)
 
@@ -87,6 +88,17 @@ class SearchWorker(QThread):
                         results.extend(pkg_list)
                 except Exception as e:
                     logger.error(f"Error searching {source}: {e}")
+            
+            # Apply ranking and deduplication for better search results
+            if results:
+                # Deduplicate results (prefer pacman over AUR for duplicates)
+                results = deduplicate_packages(results, prefer_aur=False)
+                logger.info(f"Deduplicated to {len(results)} unique packages")
+                
+                # Rank results by relevance using sophisticated scoring algorithm
+                # Show top 50 most relevant results instead of all results
+                results = get_top_matches(self.query, results, limit=50)
+                logger.info(f"Ranked and limited to top {len(results)} matches")
             
             self.results_ready.emit(results)
         except Exception as e:
