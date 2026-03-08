@@ -32,3 +32,6 @@ packages = ["archpkg"]
 
 [tool.setuptools.package-data]
 archpkg = ["*.yaml", "*.yml", "*.json", "templates/*.html", "templates/**/*"]
+
+[tool.setuptools.data-files]
+"share/applications" = ["archpkg-helper.desktop"]

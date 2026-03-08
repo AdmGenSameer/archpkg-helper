@@ -155,9 +155,14 @@ After installation, the CLI is available as `archpkg`.
 ArchPkg Helper provides a professional native desktop application for graphical package management:
 
 ```sh
-# Launch the GUI (works immediately after install.sh)
+# Launch from command line
 archpkg gui
+
+# Or find it in your application menu
+# Look for "archpkg helper" in System/Package Manager category
 ```
+
+The GUI appears in your desktop environment's application menu (GNOME Activities, KDE Application Menu, XFCE Application Finder, etc.) after installation.
 
 **GUI Features:**
 - **Search & Install Tab**: Search packages across all sources with real-time trust scores

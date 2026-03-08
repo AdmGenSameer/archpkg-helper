@@ -241,6 +241,47 @@ EOF
 fi
 
 ##############################################
+# 9. Install desktop entry for GUI
+##############################################
+echo "[*] Installing desktop application entry…"
+
+DESKTOP_DIR="$HOME/.local/share/applications"
+mkdir -p "$DESKTOP_DIR"
+
+# Try to copy from repo if available, otherwise create directly
+if [ -f "archpkg-helper.desktop" ]; then
+    cp archpkg-helper.desktop "$DESKTOP_DIR/archpkg-helper.desktop"
+    echo "[✔] Desktop entry installed from local file"
+else
+    # Create desktop entry directly
+    cat > "$DESKTOP_DIR/archpkg-helper.desktop" <<'DESKTOP_EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=archpkg helper
+GenericName=Package Manager
+Comment=Cross-distribution package manager with GUI
+Exec=archpkg gui
+Icon=system-software-install
+Terminal=false
+Categories=System;PackageManager;Settings;
+Keywords=package;install;update;software;pacman;apt;dnf;aur;flatpak;snap;
+StartupNotify=true
+StartupWMClass=archpkg-helper
+DESKTOP_EOF
+    echo "[✔] Desktop entry created"
+fi
+
+chmod +x "$DESKTOP_DIR/archpkg-helper.desktop"
+
+# Update desktop database if available
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+fi
+
+echo "[✔] GUI will appear in application menu"
+
+##############################################
 # DONE
 ##############################################
 echo "[✔] ArchPkg installation complete!"
@@ -250,4 +291,5 @@ echo "    archpkg --help       # Show all CLI commands"
 echo "    archpkg gui          # Launch native desktop GUI"
 echo "    archpkg search <pkg> # Search for packages"
 echo ""
-echo "Both CLI and GUI are now available!"
+echo "The GUI is also available in your application menu!"
+echo "Look for 'archpkg helper' in System/Package Manager category."

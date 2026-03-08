@@ -39,9 +39,17 @@ pipx install archpkg[all]  # includes all optional features
 
 ## Launching the GUI
 
+**From command line:**
 ```bash
 archpkg gui
 ```
+
+**From application menu:**
+Look for "archpkg helper" in your desktop environment's application menu:
+- **GNOME**: Search for "archpkg" in Activities
+- **KDE Plasma**: Find in Application Menu → System → Package Manager
+- **XFCE**: Application Finder → System → Package Manager
+- **Other DEs**: Check System or Package Manager category
 
 ## Interface Overview
 

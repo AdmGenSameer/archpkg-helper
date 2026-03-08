@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=archpkg helper
+GenericName=Package Manager
+Comment=Cross-distribution package manager with GUI
+Exec=archpkg gui
+Icon=system-software-install
+Terminal=false
+Categories=System;PackageManager;Settings;
+Keywords=package;install;update;software;pacman;apt;dnf;aur;flatpak;snap;
+StartupNotify=true
+StartupWMClass=archpkg-helper
