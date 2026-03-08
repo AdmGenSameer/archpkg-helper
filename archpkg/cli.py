@@ -1485,7 +1485,8 @@ def config(
         # Set configuration value
         try:
             # Convert value to appropriate type
-            converted_value: any = value
+            from typing import Any
+            converted_value: Any = value
             if value.lower() in ('true', 'false'):
                 converted_value = value.lower() == 'true'
             elif value.isdigit():
@@ -1527,11 +1528,11 @@ def list_installed(
 
     for pkg in packages:
         update_status = "[green]No[/green]" if not pkg.update_available else "[red]Yes[/red]"
-        last_updated = pkg.last_updated or "Never"
+        last_updated = pkg.last_update_check or pkg.install_date or "Never"
         table.add_row(
             pkg.name,
             pkg.source,
-            pkg.installed_version or "Unknown",
+            pkg.version or "Unknown",
             update_status,
             last_updated
         )
@@ -1560,7 +1561,7 @@ def service(
         if config.auto_update_enabled:
             console.print("[green]Background update service is enabled[/green]")
             console.print(f"Check interval: {config.update_check_interval_hours} hours")
-            console.print(f"Auto-install: {'Enabled' if config.auto_install_updates else 'Disabled'}")
+            console.print(f"Auto-update mode: {config.auto_update_mode}")
         else:
             console.print("[yellow]Background update service is disabled[/yellow]")
     else:

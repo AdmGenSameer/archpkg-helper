@@ -306,13 +306,28 @@ class MainWindow(QMainWindow):
             controls_layout.addWidget(audit_button)
         
         layout.addLayout(controls_layout)
-        
-        # Installed packages list
-        self.installed_list = QListWidget()
-        layout.addWidget(self.installed_list)
+
+        # Installed packages split view
+        split_layout = QHBoxLayout()
+
+        apps_group = QGroupBox("Applications (Explicit/Manual)")
+        apps_layout = QVBoxLayout()
+        self.apps_list = QListWidget()
+        apps_layout.addWidget(self.apps_list)
+        apps_group.setLayout(apps_layout)
+        split_layout.addWidget(apps_group)
+
+        deps_group = QGroupBox("Dependencies (Auto-installed)")
+        deps_layout = QVBoxLayout()
+        self.deps_list = QListWidget()
+        deps_layout.addWidget(self.deps_list)
+        deps_group.setLayout(deps_layout)
+        split_layout.addWidget(deps_group)
+
+        layout.addLayout(split_layout)
         
         # Info label
-        self.installed_info_label = QLabel("Click 'Refresh List' to load installed packages")
+        self.installed_info_label = QLabel("Click 'Refresh List' to load applications and dependencies")
         layout.addWidget(self.installed_info_label)
         
         self.tabs.addTab(installed_widget, "Installed Packages")
@@ -744,39 +759,119 @@ class MainWindow(QMainWindow):
     
     def refresh_installed_packages(self):
         """Refresh the list of installed packages."""
-        self.installed_list.clear()
+        self.apps_list.clear()
+        self.deps_list.clear()
         self.installed_info_label.setText("Loading installed packages...")
-        
+
         try:
-            # Get installed packages based on distro
+            apps = set()
+            deps = set()
+
+            # Get installed package split based on distro
             if self.distro_family == 'arch':
-                result = subprocess.run(['paru', '-Q'], capture_output=True, text=True, timeout=30)
+                apps_result = subprocess.run(['paru', '-Qe'], capture_output=True, text=True, timeout=30)
+                deps_result = subprocess.run(['paru', '-Qd'], capture_output=True, text=True, timeout=30)
+
+                if apps_result.returncode == 0:
+                    for line in apps_result.stdout.split('\n'):
+                        parts = line.split()
+                        if parts:
+                            apps.add(parts[0])
+
+                if deps_result.returncode == 0:
+                    for line in deps_result.stdout.split('\n'):
+                        parts = line.split()
+                        if parts:
+                            deps.add(parts[0])
+
             elif self.distro_family == 'debian':
-                result = subprocess.run(['dpkg', '-l'], capture_output=True, text=True, timeout=30)
+                apps_result = subprocess.run(['apt-mark', 'showmanual'], capture_output=True, text=True, timeout=30)
+                deps_result = subprocess.run(['apt-mark', 'showauto'], capture_output=True, text=True, timeout=30)
+
+                if apps_result.returncode == 0:
+                    for line in apps_result.stdout.split('\n'):
+                        pkg = line.strip()
+                        if pkg:
+                            apps.add(pkg)
+
+                if deps_result.returncode == 0:
+                    for line in deps_result.stdout.split('\n'):
+                        pkg = line.strip()
+                        if pkg:
+                            deps.add(pkg)
+
             elif self.distro_family == 'fedora':
-                result = subprocess.run(['dnf', 'list', 'installed'], capture_output=True, text=True, timeout=30)
+                user_result = subprocess.run(
+                    ['dnf', 'repoquery', '--userinstalled', '--qf', '%{name}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                all_result = subprocess.run(
+                    ['dnf', 'repoquery', '--installed', '--qf', '%{name}'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+
+                if user_result.returncode == 0:
+                    for line in user_result.stdout.split('\n'):
+                        pkg = line.strip()
+                        if pkg:
+                            apps.add(pkg)
+
+                if all_result.returncode == 0:
+                    all_pkgs = set()
+                    for line in all_result.stdout.split('\n'):
+                        pkg = line.strip()
+                        if pkg:
+                            all_pkgs.add(pkg)
+                    deps = all_pkgs - apps
+
             elif self.distro_family == 'suse':
-                result = subprocess.run(['zypper', 'se', '--installed-only'], capture_output=True, text=True, timeout=30)
+                user_result = subprocess.run(
+                    ['zypper', '--quiet', 'pa', '--userinstalled'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                all_result = subprocess.run(['rpm', '-qa'], capture_output=True, text=True, timeout=30)
+
+                if user_result.returncode == 0:
+                    for line in user_result.stdout.split('\n'):
+                        line = line.strip()
+                        if line and '|' in line:
+                            parts = [part.strip() for part in line.split('|')]
+                            if len(parts) >= 3 and parts[0] in {'i', 'i+'}:
+                                name = parts[2]
+                                if name and name != 'Name':
+                                    apps.add(name)
+
+                if all_result.returncode == 0:
+                    all_pkgs = set(pkg.strip() for pkg in all_result.stdout.split('\n') if pkg.strip())
+                    deps = all_pkgs - apps
+
             else:
                 self.installed_info_label.setText("Package listing not supported for this distribution")
                 return
-            
-            if result.returncode == 0:
-                lines = result.stdout.split('\n')
-                package_count = 0
-                
-                for line in lines:
-                    if line.strip():
-                        parts = line.split()
-                        if parts:
-                            pkg_name = parts[0]
-                            self.installed_list.addItem(pkg_name)
-                            package_count += 1
-                
-                self.installed_info_label.setText(f"Total installed packages: {package_count}")
-            else:
-                self.installed_info_label.setText("Failed to load installed packages")
-        
+
+            # Remove overlap defensively
+            deps = deps - apps
+
+            for pkg in sorted(apps):
+                self.apps_list.addItem(pkg)
+
+            for pkg in sorted(deps):
+                self.deps_list.addItem(pkg)
+
+            total_count = len(apps) + len(deps)
+            self.installed_info_label.setText(
+                f"Applications: {len(apps)} | Dependencies: {len(deps)} | Total: {total_count}"
+            )
+
+            if total_count == 0:
+                self.installed_info_label.setText("No installed packages found or package manager query failed")
+
         except Exception as e:
             self.installed_info_label.setText(f"Error: {str(e)}")
     

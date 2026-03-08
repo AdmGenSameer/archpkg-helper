@@ -16,7 +16,8 @@ dependencies = [
   "typer[all]",
   "distro",
   "flask",
-  "beautifulsoup4"
+  "beautifulsoup4",
+  "rapidfuzz>=3.0.0"
 ]
 
 [project.optional-dependencies]
