@@ -21,8 +21,8 @@ A cross-distro command-line utility that helps you search for packages and gener
 - [About](#about)
 - [Features](#features)
 - [Quick Start (install.sh)](#quick-start-installsh)
-- [Installation (Recommended: pipx)](#installation-recommended-pipx)
-- [Alternative Installation (pip)](#alternative-installation-pip)
+- [Installation (Recommended: install.sh)](#installation-recommended-installsh)
+- [Alternative Installation (venv)](#alternative-installation-venv)
 - [Usage](#usage)
 - [🔄 Auto-Update System](#🔄-auto-update-system)
 - [🏗️ Architecture](#🏗️-architecture)
@@ -36,7 +36,7 @@ archpkg-helper is designed to work across Linux distributions. While originally 
 ## Features
 
 - **Native Desktop GUI**: Professional PyQt5-based graphical interface for package management
-  - Cross-distro support (Arch, Debian, Ubuntu, Fedora, openSUSE, etc.)
+  - Cross-distro support (Arch, Debian, Ubuntu, Kali, Mint, Fedora, openSUSE, etc.)
   - Search, install, and remove packages with visual feedback
   - Real-time trust scores for AUR packages
   - System maintenance tools (updates, cleanup, snapshots)
@@ -72,79 +72,54 @@ wget -qO- https://raw.githubusercontent.com/AdmGenSameer/archpkg-helper/main/ins
 ```
 
 Notes:
-- The installer ensures Python, pip, pipx, and PyQt5 are available
-- Installs both CLI and GUI automatically
-- You may be prompted for sudo to install prerequisites on your distro.
-- On Arch-based systems, installer now asks for a profile:
+  - The installer creates a private virtual environment, installs ArchPkg there, and adds a launcher to `~/.local/bin`
+  - Installs both CLI and GUI automatically
+  - On Arch-based systems, installer asks for a profile:
   - `normal` (recommended): automatic advice + news/trust-aware updates
   - `advanced`: manual control
 
-## Installation (Recommended: pipx)
+## Installation (Recommended: install.sh)
 
-On Arch and many other distros, system Python may be “externally managed” (PEP 668), which prevents global pip installs. pipx installs Python CLIs into isolated environments and puts their executables on your PATH—this is the easiest, safest method.
+The installer now follows one path on every supported distro:
 
-1) Install pipx
-- Arch Linux:
-  ```sh
-  sudo pacman -S pipx
-  pipx ensurepath
-  ```
-- Debian/Ubuntu:
-  ```sh
-  sudo apt update
-  sudo apt install pipx
-  pipx ensurepath
-  ```
-- Fedora:
-  ```sh
-  sudo dnf install pipx
-  pipx ensurepath
-  ```
-- openSUSE:
-  ```sh
-  sudo zypper install python3-pipx
-  pipx ensurepath
-  ```
+1) It creates a private virtual environment under `~/.local/share/archpkg-helper`
+2) It installs ArchPkg into that environment
+3) It installs PyQt5 for the GUI
+4) It drops a launcher in `~/.local/bin/archpkg`
+5) It updates common shell startup files so `archpkg` is available in new shells
+6) On graphical systems, it creates a desktop entry in `~/.local/share/applications`
 
-2) Install archpkg-helper with pipx
-- Directly from GitHub:
-  ```sh
-  pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git
-  ```
-- From a local clone:
-  ```sh
-  git clone https://github.com/AdmGenSameer/archpkg-helper.git
-  cd archpkg-helper
-  pipx install .
-  ```
-
-Upgrade later with:
+From a cloned repository:
 ```sh
-pipx upgrade archpkg-helper
+git clone https://github.com/AdmGenSameer/archpkg-helper.git
+cd archpkg-helper
+bash install.sh
 ```
 
-Ensure your shell session has pipx’s bin path in PATH (pipx prints instructions after `pipx ensurepath`, typically `~/.local/bin`).
-
-## Alternative Installation (pip)
-
-If you prefer pip, install in user scope to avoid system conflicts:
-
-- From a local clone:
-  ```sh
-  git clone https://github.com/AdmGenSameer/archpkg-helper.git
-  cd archpkg-helper
-  python3 -m pip install --user .
-  ```
-- Directly from GitHub:
-  ```sh
-  python3 -m pip install --user git+https://github.com/AdmGenSameer/archpkg-helper.git
-  ```
-
-If your distro enforces PEP 668 protections for global installs, you may see errors. You can bypass with:
+Or run it from the repository contents you already have:
 ```sh
-python3 -m pip install --break-system-packages .
+bash install.sh
 ```
-However, using pipx is strongly recommended instead of breaking system protections.
+
+## Alternative Installation (venv)
+
+If you prefer to manage the environment yourself:
+
+```sh
+git clone https://github.com/AdmGenSameer/archpkg-helper.git
+cd archpkg-helper
+python3 -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install .
+.venv/bin/pip install PyQt5
+```
+
+Then launch:
+```sh
+.venv/bin/archpkg gui
+```
+
+If you still want a pipx-managed install, `pipx install .` works from a local clone.
 
 ## Usage
 
@@ -162,7 +137,7 @@ archpkg gui
 # Look for "archpkg helper" in System/Package Manager category
 ```
 
-The GUI appears in your desktop environment's application menu (GNOME Activities, KDE Application Menu, XFCE Application Finder, etc.) after installation.
+On graphical systems, the GUI appears in your desktop environment's application menu (GNOME Activities, KDE Application Menu, XFCE Application Finder, etc.) after installation. On CLI-only systems, the installer skips the menu entry and leaves the `archpkg` command-line launcher available.
 
 **GUI Features:**
 - **Search & Install Tab**: Search packages across all sources with real-time trust scores
@@ -187,7 +162,8 @@ The GUI appears in your desktop environment's application menu (GNOME Activities
 **Notes:**
 - PyQt5 is automatically installed when using `install.sh`
 - Both CLI and GUI are available immediately after installation
-- For manual pip/pipx installs: `pip install PyQt5` or `pipx install archpkg[gui]`
+- For manual venv installs: `pip install PyQt5`
+- If GUI dependencies are ever missing, run `archpkg add gui`
 
 The GUI works on all distributions and automatically adapts to your system's package manager.
 
@@ -226,6 +202,12 @@ Search for a package across all supported package managers:
 
 ```sh
 archpkg search firefox
+```
+
+Sort AUR results with Paru-style fields:
+
+```sh
+archpkg search firefox --aur-sortby popularity
 ```
 
 

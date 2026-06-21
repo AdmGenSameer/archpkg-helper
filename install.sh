@@ -1,211 +1,299 @@
 #!/bin/bash
-# Ultra-fault-tolerant ArchPkg installer
-set -e
+set -euo pipefail
 
-echo "[*] Starting universal installation of ArchPkg CLI..."
+APP_NAME="archpkg"
+REPO_ARCHIVE_URL="https://github.com/AdmGenSameer/archpkg-helper/archive/refs/heads/main.zip"
+INSTALL_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/archpkg-helper"
+VENV_DIR="$INSTALL_ROOT/venv"
+BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
+DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SOURCE_SPEC="$REPO_ARCHIVE_URL"
+SUDO=""
 
-##############################################
-# 0. Detect if running as root — disable sudo
-##############################################
-if [ "$(id -u)" -eq 0 ]; then
-    echo "[*] Running as root → disabling sudo"
-    SUDO=""
-else
-    SUDO="sudo"
-fi
+# Tiny logging helpers keep the installer output readable.
+log() {
+    echo "[*] $*"
+}
 
-##############################################
-# 1. Detect distro
-##############################################
-if [ ! -f /etc/os-release ]; then
-    echo "[!] Cannot detect distro. Exiting."
+die() {
+    echo "[x] $*"
     exit 1
-fi
+}
 
-. /etc/os-release
-DISTRO=$ID
-echo "[*] Detected Linux distro: $NAME ($DISTRO)"
+detect_distro_family() {
+    if [ ! -f /etc/os-release ]; then
+        echo "unknown"
+        return
+    fi
 
-case "$DISTRO" in
-    bluefin|nobara|ultramarine|silverblue|fedora*)
-        DISTRO="fedora"
-        echo "[*] Normalized to Fedora-based."
-        ;;
-    endeavouros|manjaro|archcraft|arch*)
-        DISTRO="arch"
-        echo "[*] Normalized to Arch-based."
-        ;;
-    pop|pop_os|ubuntu|debian*)
-        DISTRO="debian"
-        echo "[*] Normalized to Debian/Ubuntu-based."
-        ;;
-    opensuse*|suse*)
-        DISTRO="opensuse"
-        echo "[*] Normalized to openSUSE-based."
-        ;;
-    *)
-        echo "[!] Unknown distro → defaulting to Fedora"
-        DISTRO="fedora"
-        ;;
-esac
-
-##############################################
-# 2. Select dependency packages
-##############################################
-# Minimal set needed everywhere
-COMMON_PKGS=(git curl wget ca-certificates)
-
-case "$DISTRO" in
-    debian)
-        DEPS=(python3 python3-pip python3-venv pipx python3-pyqt5 "${COMMON_PKGS[@]}")
-        ;;
-    fedora)
-        DEPS=(python3 python3-pip python3-virtualenv pipx python3-qt5 "${COMMON_PKGS[@]}")
-        ;;
-    arch)
-        DEPS=(python python-pip python-pipx python-virtualenv python-pyqt5 base-devel "${COMMON_PKGS[@]}")
-        ;;
-    opensuse)
-        DEPS=(python3 python3-pip python3-pipx python3-virtualenv python3-qt5 "${COMMON_PKGS[@]}")
-        ;;
-esac
-
-##############################################
-# 3. Fault-tolerant package installer
-##############################################
-install_pkg() {
-    pkg="$1"
-    echo "[*] Ensuring $pkg is installed…"
-
-    case "$DISTRO" in
-        debian)
-            dpkg -s "$pkg" >/dev/null 2>&1 && return 0
-            $SUDO apt-get update -y >/dev/null 2>&1 || true
-            $SUDO apt-get install -y "$pkg" >/dev/null 2>&1 || true
+    . /etc/os-release
+    case "${ID:-unknown}" in
+        arch|manjaro|endeavouros|archcraft|garuda)
+            echo "arch"
             ;;
-        fedora)
-            rpm -q "$pkg" >/dev/null 2>&1 && return 0
-            $SUDO dnf install -y "$pkg" >/dev/null 2>&1 || true
+        ubuntu|debian|kali|linuxmint|mint|pop|elementary)
+            echo "debian"
             ;;
-        arch)
-            pacman -Qi "$pkg" >/dev/null 2>&1 && return 0
-            $SUDO pacman -Sy --noconfirm "$pkg" >/dev/null 2>&1 || true
+        fedora|rhel|centos|rocky|alma|nobara|bluefin|silverblue|ultramarine)
+            echo "fedora"
             ;;
-        opensuse)
-            rpm -q "$pkg" >/dev/null 2>&1 && return 0
-            $SUDO zypper install -y "$pkg" >/dev/null 2>&1 || true
+        opensuse*|suse*|sles*)
+            echo "suse"
+            ;;
+        *)
+            echo "unknown"
             ;;
     esac
 }
 
-##############################################
-# 4. Install all required packages
-##############################################
-echo "[*] Installing system dependencies…"
-
-for pkg in "${DEPS[@]}"; do
-    install_pkg "$pkg"
-done
-
-##############################################
-# 4.5 Ensure paru is available on Arch
-##############################################
-if [ "$DISTRO" = "arch" ]; then
-    echo "[*] Checking for paru (recommended AUR helper)…"
-    if ! command -v paru >/dev/null 2>&1; then
-        echo "[*] paru not found. Attempting installation from AUR…"
-        if ! command -v git >/dev/null 2>&1; then
-            install_pkg git
-        fi
-
-        PARU_BUILD_DIR="/tmp/paru-bin-build"
-        rm -rf "$PARU_BUILD_DIR"
-        git clone https://aur.archlinux.org/paru-bin.git "$PARU_BUILD_DIR" >/dev/null 2>&1 || true
-
-        if [ -d "$PARU_BUILD_DIR" ]; then
-            pushd "$PARU_BUILD_DIR" >/dev/null
-            if [ -n "$SUDO" ]; then
-                sudo -u "$USER" makepkg -si --noconfirm >/dev/null 2>&1 || true
-            else
-                makepkg -si --noconfirm >/dev/null 2>&1 || true
-            fi
-            popd >/dev/null
-        fi
-
-        if command -v paru >/dev/null 2>&1; then
-            echo "[✔] paru installed successfully."
-        else
-            echo "[!] paru installation failed. Continuing, but Arch workflows may be limited."
-        fi
+# Use sudo only when we are not already root.
+init_sudo() {
+    if [ "$(id -u)" -eq 0 ]; then
+        SUDO=""
     else
-        echo "[✔] paru is already installed."
+        SUDO="sudo"
     fi
-fi
+}
 
-##############################################
-# 5. Ensure python, pip, venv work
-##############################################
-echo "[*] Validating Python environment…"
+# Install missing Python venv support only when the runtime does not already have it.
+install_venv_support() {
+    local distro_family="$1"
 
-if ! command -v python3 >/dev/null; then
-    echo "[!] python3 missing — installer cannot continue."
-    exit 1
-fi
+    log "Attempting to install Python venv support for $distro_family..."
+    case "$distro_family" in
+        arch)
+            $SUDO pacman -Sy --noconfirm python >/dev/null 2>&1 || return 1
+            ;;
+        debian)
+            $SUDO apt-get update -y >/dev/null 2>&1 || true
+            $SUDO apt-get install -y python3-venv >/dev/null 2>&1 || return 1
+            ;;
+        fedora)
+            $SUDO dnf install -y python3-virtualenv >/dev/null 2>&1 || return 1
+            ;;
+        suse)
+            $SUDO zypper install -y python3-virtualenv >/dev/null 2>&1 || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 
-if ! python3 -m pip --version >/dev/null 2>&1; then
-    echo "[!] pip missing — attempting install"
-    install_pkg python3-pip
-fi
+    return 0
+}
 
-# venv must work
-python3 -m venv /tmp/testvenv >/dev/null 2>&1 || install_pkg python3-venv || true
+# Make sure git exists because users may want to clone, update, or inspect the repo locally.
+ensure_git() {
+    if command -v git >/dev/null 2>&1; then
+        log "git is already installed"
+        return 0
+    fi
 
-##############################################
-# 6. Ensure pipx exists
-##############################################
-echo "[*] Ensuring pipx is installed…"
+    local distro_family
+    distro_family="$(detect_distro_family)"
+    init_sudo
 
-if ! command -v pipx >/dev/null 2>&1; then
-    echo "[*] pipx missing → installing with pip fallback…"
-    python3 -m pip install --user pipx >/dev/null 2>&1 || true
-    export PATH="$HOME/.local/bin:$PATH"
-fi
+    log "git is missing, attempting to install it..."
+    case "$distro_family" in
+        arch)
+            $SUDO pacman -Sy --noconfirm git >/dev/null 2>&1 || return 1
+            ;;
+        debian)
+            $SUDO apt-get update -y >/dev/null 2>&1 || true
+            $SUDO apt-get install -y git >/dev/null 2>&1 || return 1
+            ;;
+        fedora)
+            $SUDO dnf install -y git >/dev/null 2>&1 || return 1
+            ;;
+        suse)
+            $SUDO zypper install -y git >/dev/null 2>&1 || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
 
-if ! command -v pipx >/dev/null; then
-    echo "[!] pipx installation failed — cannot continue."
-    exit 1
-fi
+    command -v git >/dev/null 2>&1
+}
 
-pipx ensurepath >/dev/null 2>&1 || true
+ensure_python() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        die "python3 is required. Install Python with your system package manager and run this script again."
+    fi
 
-##############################################
-# 7. Install ArchPkg (now git exists)
-##############################################
-echo "[*] Installing ArchPkg CLI…"
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        log "Bootstrapping pip with ensurepip..."
+        python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
+    fi
 
-if ! pipx install git+https://github.com/AdmGenSameer/archpkg-helper.git; then
-    echo "[!] pipx install failed → retrying with --force"
-    pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git
-fi
+    if ! python3 -m pip --version >/dev/null 2>&1; then
+        die "pip is not available for this Python installation."
+    fi
 
-##############################################
-# 8. Profile setup (normal vs advanced)
-##############################################
-if [ "$DISTRO" = "arch" ]; then
+    if ! python3 -m venv --help >/dev/null 2>&1; then
+        local distro_family
+        distro_family="$(detect_distro_family)"
+        init_sudo
+        if ! install_venv_support "$distro_family"; then
+            die "python3-venv support is missing. Install your distro's Python venv package and rerun the installer."
+        fi
+    fi
+}
+
+ensure_source() {
+    if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
+        SOURCE_SPEC="$SCRIPT_DIR"
+        log "Using local checkout at $SOURCE_SPEC"
+    else
+        # Fallback for web-based installs where the repo is not present locally.
+        log "Using remote archive source"
+    fi
+}
+
+# Create an isolated Python environment so the install does not affect system packages.
+create_venv() {
+    mkdir -p "$INSTALL_ROOT"
+    if [ ! -x "$VENV_DIR/bin/python" ]; then
+        log "Creating virtual environment in $VENV_DIR"
+        python3 -m venv "$VENV_DIR"
+    fi
+}
+
+# Install ArchPkg and the GUI dependency into the private venv.
+install_package() {
+    local pip_bin="$VENV_DIR/bin/pip"
+
+    log "Upgrading packaging tools..."
+    "$pip_bin" install --upgrade pip setuptools wheel >/dev/null
+
+    log "Installing ArchPkg from $SOURCE_SPEC..."
+    "$pip_bin" install --upgrade "$SOURCE_SPEC"
+
+    log "Installing GUI dependency..."
+    "$pip_bin" install --upgrade PyQt5
+}
+
+# Add a small launcher so the app is easy to start from the terminal.
+create_launcher() {
+    mkdir -p "$BIN_DIR"
+
+    cat > "$BIN_DIR/$APP_NAME" <<EOF
+#!/bin/bash
+exec "$VENV_DIR/bin/archpkg" "\$@"
+EOF
+
+    chmod +x "$BIN_DIR/$APP_NAME"
+
+    case ":${PATH:-}:" in
+        *:"$BIN_DIR":*) ;;
+        *) export PATH="$BIN_DIR:$PATH" ;;
+    esac
+}
+
+# Persist the launcher directory in common shell startup files so `archpkg` is available in new shells.
+ensure_shell_path() {
+    local path_line='export PATH="$HOME/.local/bin:$PATH"'
+    local shell_files=("$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc")
+
+    for shell_file in "${shell_files[@]}"; do
+        if [ -e "$shell_file" ] || [ "$shell_file" = "$HOME/.profile" ]; then
+            if ! grep -Fq "$path_line" "$shell_file" 2>/dev/null; then
+                {
+                    echo ""
+                    echo "# archpkg-helper: make user-local commands available"
+                    echo "if [ -d \"\$HOME/.local/bin\" ]; then"
+                    echo "    $path_line"
+                    echo "fi"
+                } >> "$shell_file"
+                log "Updated $(basename "$shell_file") to include ~/.local/bin"
+            fi
+        fi
+    done
+}
+
+# Only register a desktop app when the machine appears to have a graphical desktop.
+has_graphical_environment() {
+    if [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; then
+        return 0
+    fi
+
+    if [ -n "${XDG_CURRENT_DESKTOP:-}" ] || [ -n "${DESKTOP_SESSION:-}" ]; then
+        return 0
+    fi
+
+    if [ -d /usr/share/xsessions ] && [ -n "$(ls -A /usr/share/xsessions 2>/dev/null)" ]; then
+        return 0
+    fi
+
+    if [ -d /usr/share/wayland-sessions ] && [ -n "$(ls -A /usr/share/wayland-sessions 2>/dev/null)" ]; then
+        return 0
+    fi
+
+    if command -v systemctl >/dev/null 2>&1; then
+        if [ "$(systemctl get-default 2>/dev/null || true)" = "graphical.target" ]; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+# Register the GUI in the desktop menu when a graphical session or desktop stack is present.
+install_desktop_entry() {
+    if ! has_graphical_environment; then
+        log "No graphical desktop detected, skipping application menu integration"
+        return 0
+    fi
+
+    mkdir -p "$DESKTOP_DIR"
+
+    cat > "$DESKTOP_DIR/archpkg-helper.desktop" <<EOF
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=archpkg helper
+GenericName=Package Manager
+Comment=Cross-distribution package manager with GUI
+Exec=$BIN_DIR/$APP_NAME gui
+TryExec=$BIN_DIR/$APP_NAME
+Icon=system-software-install
+Terminal=false
+Categories=System;PackageManager;Settings;
+Keywords=package;install;update;software;pacman;apt;dnf;aur;flatpak;snap;
+StartupNotify=true
+StartupWMClass=archpkg-helper
+EOF
+
+    chmod +x "$DESKTOP_DIR/archpkg-helper.desktop"
+
+    if command -v update-desktop-database >/dev/null 2>&1; then
+        update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
+    fi
+
+    log "Desktop launcher installed and should appear in the application menu"
+}
+
+# Preserve the Arch-only profile setup, but keep it out of the universal path for other distros.
+configure_arch_profile() {
+    local distro_family="$1"
+    if [ "$distro_family" != "arch" ]; then
+        return
+    fi
+
     echo ""
-    echo "[*] Choose your archpkg profile:"
+    log "Choose your archpkg profile:"
     echo "    1) normal (recommended) - archpkg handles updates/news/trust checks automatically"
     echo "    2) advanced - full manual control"
     read -r -p "Enter choice [1/2] (default: 1): " ARCHPKG_PROFILE_CHOICE
 
-    if [ "$ARCHPKG_PROFILE_CHOICE" = "2" ]; then
-        ARCHPKG_USER_MODE="advanced"
-    else
-        ARCHPKG_USER_MODE="normal"
+    local archpkg_user_mode="normal"
+    if [ "${ARCHPKG_PROFILE_CHOICE:-1}" = "2" ]; then
+        archpkg_user_mode="advanced"
     fi
 
     mkdir -p "$HOME/.archpkg"
-    if [ "$ARCHPKG_USER_MODE" = "advanced" ]; then
+    if [ "$archpkg_user_mode" = "advanced" ]; then
         cat > "$HOME/.archpkg/config.json" <<EOF
 {
   "user_mode": "advanced",
@@ -237,59 +325,36 @@ EOF
 EOF
     fi
 
-    echo "[✔] Profile configured: $ARCHPKG_USER_MODE"
-fi
+    log "Profile configured: $archpkg_user_mode"
+}
 
-##############################################
-# 9. Install desktop entry for GUI
-##############################################
-echo "[*] Installing desktop application entry…"
+main() {
+    log "Starting universal installation of ArchPkg..."
 
-DESKTOP_DIR="$HOME/.local/share/applications"
-mkdir -p "$DESKTOP_DIR"
+    ensure_python
+    ensure_git
+    ensure_source
+    create_venv
+    install_package
+    create_launcher
+    ensure_shell_path
+    install_desktop_entry
+    configure_arch_profile "$(detect_distro_family)"
 
-# Try to copy from repo if available, otherwise create directly
-if [ -f "archpkg-helper.desktop" ]; then
-    cp archpkg-helper.desktop "$DESKTOP_DIR/archpkg-helper.desktop"
-    echo "[✔] Desktop entry installed from local file"
-else
-    # Create desktop entry directly
-    cat > "$DESKTOP_DIR/archpkg-helper.desktop" <<'DESKTOP_EOF'
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=archpkg helper
-GenericName=Package Manager
-Comment=Cross-distribution package manager with GUI
-Exec=archpkg gui
-Icon=system-software-install
-Terminal=false
-Categories=System;PackageManager;Settings;
-Keywords=package;install;update;software;pacman;apt;dnf;aur;flatpak;snap;
-StartupNotify=true
-StartupWMClass=archpkg-helper
-DESKTOP_EOF
-    echo "[✔] Desktop entry created"
-fi
+    log "ArchPkg installation complete!"
+    echo ""
+    echo "Quick start:"
+    echo "    archpkg --help       # Show all CLI commands"
+    echo "    archpkg gui          # Launch native desktop GUI"
+    echo "    archpkg search <pkg> # Search for packages"
+    echo ""
+    echo "Your shell startup files were updated so ~/.local/bin is available in new sessions."
+    echo ""
+    if has_graphical_environment; then
+        echo "The GUI is also available in your application menu."
+    else
+        echo "CLI-only environment detected, so no application menu entry was created."
+    fi
+}
 
-chmod +x "$DESKTOP_DIR/archpkg-helper.desktop"
-
-# Update desktop database if available
-if command -v update-desktop-database >/dev/null 2>&1; then
-    update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
-fi
-
-echo "[✔] GUI will appear in application menu"
-
-##############################################
-# DONE
-##############################################
-echo "[✔] ArchPkg installation complete!"
-echo ""
-echo "Quick start:"
-echo "    archpkg --help       # Show all CLI commands"
-echo "    archpkg gui          # Launch native desktop GUI"
-echo "    archpkg search <pkg> # Search for packages"
-echo ""
-echo "The GUI is also available in your application menu!"
-echo "Look for 'archpkg helper' in System/Package Manager category."
+main "$@"
