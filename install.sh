@@ -10,6 +10,19 @@ DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 SOURCE_SPEC="$REPO_ARCHIVE_URL"
 SUDO=""
+UNINSTALL_MODE=false
+PURGE_CONFIG=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --uninstall|uninstall)
+            UNINSTALL_MODE=true
+            ;;
+        --purge)
+            PURGE_CONFIG=true
+            ;;
+    esac
+done
 
 # Tiny logging helpers keep the installer output readable.
 log() {
@@ -266,6 +279,46 @@ EOF
     esac
 }
 
+remove_shell_path_block() {
+    local shell_file="$1"
+    local block_file
+    block_file="$(mktemp)"
+
+    python3 - "$shell_file" "$block_file" <<'PY'
+from pathlib import Path
+import sys
+
+shell_file = Path(sys.argv[1])
+block_file = Path(sys.argv[2])
+block = "\n# archpkg-helper: make user-local commands available\nif [ -d \"$HOME/.local/bin\" ]; then\n    export PATH=\"$HOME/.local/bin:$PATH\"\nfi\n"
+
+if shell_file.exists():
+    content = shell_file.read_text(encoding='utf-8')
+    content = content.replace(block, "\n")
+    shell_file.write_text(content, encoding='utf-8')
+PY
+
+    rm -f "$block_file"
+}
+
+uninstall_installation() {
+    log "Removing ArchPkg installation..."
+    rm -f "$BIN_DIR/$APP_NAME" "$DESKTOP_DIR/archpkg-helper.desktop"
+    rm -rf "$INSTALL_ROOT"
+
+    remove_shell_path_block "$HOME/.profile" || true
+    remove_shell_path_block "$HOME/.bashrc" || true
+    remove_shell_path_block "$HOME/.zshrc" || true
+
+    if [ "$PURGE_CONFIG" = true ]; then
+        rm -rf "$HOME/.archpkg"
+    fi
+
+    log "ArchPkg uninstall complete."
+    echo ""
+    echo "If the app still appears in your desktop menu, log out and back in or refresh the application cache."
+}
+
 # Persist the launcher directory in common shell startup files so `archpkg` is available in new shells.
 ensure_shell_path() {
     local path_line='export PATH="$HOME/.local/bin:$PATH"'
@@ -404,6 +457,11 @@ EOF
 }
 
 main() {
+    if [ "$UNINSTALL_MODE" = true ]; then
+        uninstall_installation
+        return 0
+    fi
+
     log "Starting universal installation of ArchPkg..."
 
     ensure_python
