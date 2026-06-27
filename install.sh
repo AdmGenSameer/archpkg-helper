@@ -56,24 +56,51 @@ init_sudo() {
     fi
 }
 
-# Install missing Python venv support only when the runtime does not already have it.
-install_venv_support() {
+# Install Python packaging support using the system package manager when ensurepip is not available.
+install_python_support() {
     local distro_family="$1"
 
-    log "Attempting to install Python venv support for $distro_family..."
+    log "Attempting to install Python packaging support for $distro_family..."
     case "$distro_family" in
         arch)
-            $SUDO pacman -Sy --noconfirm python >/dev/null 2>&1 || return 1
+            $SUDO pacman -Sy --noconfirm python python-pip >/dev/null 2>&1 || return 1
             ;;
         debian)
             $SUDO apt-get update -y >/dev/null 2>&1 || true
-            $SUDO apt-get install -y python3-venv >/dev/null 2>&1 || return 1
+            $SUDO apt-get install -y python3-venv python3-pip >/dev/null 2>&1 || return 1
             ;;
         fedora)
-            $SUDO dnf install -y python3-virtualenv >/dev/null 2>&1 || return 1
+            $SUDO dnf install -y python3-pip python3-virtualenv >/dev/null 2>&1 || return 1
             ;;
         suse)
-            $SUDO zypper install -y python3-virtualenv >/dev/null 2>&1 || return 1
+            $SUDO zypper install -y python3-pip python3-virtualenv >/dev/null 2>&1 || return 1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    return 0
+}
+
+# Install pipx so the CLI's self-update and development workflows work on minimal systems.
+install_pipx_support() {
+    local distro_family="$1"
+
+    log "Attempting to install pipx for $distro_family..."
+    case "$distro_family" in
+        arch)
+            $SUDO pacman -Sy --noconfirm pipx >/dev/null 2>&1 || return 1
+            ;;
+        debian)
+            $SUDO apt-get update -y >/dev/null 2>&1 || true
+            $SUDO apt-get install -y pipx >/dev/null 2>&1 || return 1
+            ;;
+        fedora)
+            $SUDO dnf install -y pipx >/dev/null 2>&1 || return 1
+            ;;
+        suse)
+            $SUDO zypper install -y pipx >/dev/null 2>&1 || return 1
             ;;
         *)
             return 1
@@ -128,17 +155,46 @@ ensure_python() {
     fi
 
     if ! python3 -m pip --version >/dev/null 2>&1; then
-        die "pip is not available for this Python installation."
+        local distro_family
+        distro_family="$(detect_distro_family)"
+        init_sudo
+        log "ensurepip failed, trying system package manager for pip..."
+        if ! install_python_support "$distro_family"; then
+            die "pip is not available. Install python3-pip and python3-venv with your system package manager and rerun the installer."
+        fi
     fi
 
     if ! python3 -m venv --help >/dev/null 2>&1; then
         local distro_family
         distro_family="$(detect_distro_family)"
         init_sudo
-        if ! install_venv_support "$distro_family"; then
+        if ! install_python_support "$distro_family"; then
             die "python3-venv support is missing. Install your distro's Python venv package and rerun the installer."
         fi
     fi
+}
+
+ensure_pipx() {
+    if command -v pipx >/dev/null 2>&1; then
+        log "pipx is already installed"
+        return 0
+    fi
+
+    local distro_family
+    distro_family="$(detect_distro_family)"
+    init_sudo
+
+    log "pipx is missing, attempting to install it..."
+    if ! install_pipx_support "$distro_family"; then
+        die "pipx is not available. Install pipx with your system package manager and rerun the installer."
+    fi
+
+    if command -v pipx >/dev/null 2>&1; then
+        pipx ensurepath >/dev/null 2>&1 || true
+        return 0
+    fi
+
+    die "pipx installation completed but the command is still not available in PATH."
 }
 
 ensure_source() {
@@ -158,11 +214,30 @@ create_venv() {
         log "Creating virtual environment in $VENV_DIR"
         python3 -m venv "$VENV_DIR"
     fi
+
+    # Some minimal environments create the venv without an immediately usable pip.
+    if [ ! -x "$VENV_DIR/bin/pip" ]; then
+        log "Bootstrapping pip inside the virtual environment..."
+        "$VENV_DIR/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 || true
+    fi
+
+    if [ ! -x "$VENV_DIR/bin/pip" ]; then
+        die "Could not prepare pip inside the virtual environment. Install python3-pip and python3-venv, then rerun the installer."
+    fi
 }
 
 # Install ArchPkg and the GUI dependency into the private venv.
 install_package() {
     local pip_bin="$VENV_DIR/bin/pip"
+
+    if [ ! -x "$pip_bin" ]; then
+        log "pip is missing from the virtual environment, trying to bootstrap it..."
+        "$VENV_DIR/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 || true
+    fi
+
+    if [ ! -x "$pip_bin" ]; then
+        die "pip is still unavailable inside the virtual environment."
+    fi
 
     log "Upgrading packaging tools..."
     "$pip_bin" install --upgrade pip setuptools wheel >/dev/null
@@ -333,6 +408,7 @@ main() {
 
     ensure_python
     ensure_git
+    ensure_pipx
     ensure_source
     create_venv
     install_package
