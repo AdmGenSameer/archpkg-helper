@@ -354,31 +354,24 @@ def handle_upgrade_command() -> None:
         border_style="cyan"
     ))
     
-    # Check if pipx is available
-    import shutil
-    if not shutil.which("pipx"):
-        logger.error("pipx command not found")
-        console.print(Panel(
-            "[red]❌ pipx is not installed or not in PATH.[/red]\n\n"
-            "[bold cyan]To install pipx:[/bold cyan]\n"
-            "- Arch Linux: [cyan]sudo pacman -S pipx && pipx ensurepath[/cyan]\n"
-            "- Debian/Ubuntu: [cyan]sudo apt install pipx && pipx ensurepath[/cyan]\n"
-            "- Fedora: [cyan]sudo dnf install pipx && pipx ensurepath[/cyan]\n\n"
-            "[bold yellow]Note:[/bold yellow] After installing pipx, restart your terminal.",
-            title="pipx Not Found",
-            border_style="red"
-        ))
-        return
-    
     console.print("[blue]📥 Pulling latest changes from repository...[/blue]")
-    
-    # Run the upgrade command
-    upgrade_cmd = "pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git"
-    logger.info(f"Executing upgrade command: {upgrade_cmd}")
+
+    # Upgrade the active environment instead of a separate pipx install.
+    upgrade_cmd = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        "--force-reinstall",
+        "git+https://github.com/AdmGenSameer/archpkg-helper.git",
+    ]
+    logger.info(f"Executing upgrade command: {' '.join(upgrade_cmd)}")
     
     try:
         console.print("[blue]📦 Reinstalling with latest code...[/blue]\n")
-        exit_code = os.system(upgrade_cmd)
+        result = subprocess.run(upgrade_cmd, check=False)
+        exit_code = result.returncode
         
         if exit_code != 0:
             logger.error(f"Upgrade failed with exit code: {exit_code}")
@@ -388,9 +381,9 @@ def handle_upgrade_command() -> None:
                 "- Check your internet connection\n"
                 "- Ensure you can access GitHub (https://github.com)\n"
                 "- Try again in a few moments\n"
-                "- Check if pipx is working: [cyan]pipx list[/cyan]\n\n"
+                "- Confirm this command is running from the installed ArchPkg environment\n\n"
                 "[bold yellow]Manual upgrade:[/bold yellow]\n"
-                f"Run: [cyan]{upgrade_cmd}[/cyan]",
+                f"Run: [cyan]{' '.join(upgrade_cmd)}[/cyan]",
                 title="Upgrade Failed",
                 border_style="red"
             ))
@@ -409,8 +402,8 @@ def handle_upgrade_command() -> None:
             f"[bold]Error details:[/bold] {str(e)}\n\n"
             "[bold cyan]What to do:[/bold cyan]\n"
             "- Check your internet connection\n"
-            "- Ensure pipx is properly installed\n"
-            "- Try running manually: [cyan]pipx install --force git+https://github.com/AdmGenSameer/archpkg-helper.git[/cyan]\n"
+            "- Make sure the current Python environment can access pip and GitHub\n"
+            f"- Try running manually: [cyan]{' '.join(upgrade_cmd)}[/cyan]\n"
             "- Report this issue if it persists",
             title="Upgrade Error",
             border_style="red"
