@@ -9,7 +9,9 @@ import subprocess
 import webbrowser
 import threading
 import time
+import shutil
 from typing import List, Tuple, Optional
+from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -60,6 +62,17 @@ logger = get_logger(__name__)
 
 # Constants
 PANEL_PADDING = 4  # Padding for panel borders in terminal width calculations
+INSTALL_ROOT = Path.home() / ".local" / "share" / "archpkg-helper"
+VENV_DIR = INSTALL_ROOT / "venv"
+BIN_PATH = Path.home() / ".local" / "bin" / "archpkg"
+DESKTOP_ENTRY = Path.home() / ".local" / "share" / "applications" / "archpkg-helper.desktop"
+CONFIG_DIR = Path.home() / ".archpkg"
+STARTUP_BLOCK = (
+    "\n# archpkg-helper: make user-local commands available\n"
+    "if [ -d \"$HOME/.local/bin\" ]; then\n"
+    "    export PATH=\"$HOME/.local/bin:$PATH\"\n"
+    "fi\n"
+)
 
 def normalize_query(query: str) -> List[str]:
     """Generate query variations for better matching.
@@ -445,6 +458,79 @@ def install_gui_dependencies() -> None:
         ))
         raise typer.Exit(1)
 
+
+def _remove_startup_path_block(shell_file: Path) -> bool:
+    """Remove the launcher PATH block from a shell startup file."""
+    if not shell_file.exists():
+        return False
+
+    try:
+        content = shell_file.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    if STARTUP_BLOCK not in content:
+        return False
+
+    shell_file.write_text(content.replace(STARTUP_BLOCK, "\n"), encoding="utf-8")
+    return True
+
+
+def uninstall_archpkg(purge: bool = False, confirm: bool = True) -> None:
+    """Remove the installed ArchPkg launcher, venv, and desktop entry."""
+    console.print(Panel(
+        "[bold yellow]Removing ArchPkg installation...[/bold yellow]\n\n"
+        f"Install root: [cyan]{INSTALL_ROOT}[/cyan]\n"
+        f"Launcher: [cyan]{BIN_PATH}[/cyan]\n"
+        f"Desktop entry: [cyan]{DESKTOP_ENTRY}[/cyan]",
+        title="ArchPkg Uninstall",
+        border_style="yellow"
+    ))
+
+    if confirm and not typer.confirm("Continue with uninstall?", default=False):
+        console.print("[cyan]Uninstall cancelled.[/cyan]")
+        raise typer.Exit(0)
+
+    removed_paths: List[str] = []
+
+    for path in (DESKTOP_ENTRY, BIN_PATH):
+        if path.exists():
+            try:
+                path.unlink()
+                removed_paths.append(str(path))
+            except Exception as e:
+                console.print(f"[red]Failed to remove {path}: {e}[/red]")
+
+    if INSTALL_ROOT.exists():
+        try:
+            shutil.rmtree(INSTALL_ROOT)
+            removed_paths.append(str(INSTALL_ROOT))
+        except Exception as e:
+            console.print(f"[red]Failed to remove install directory {INSTALL_ROOT}: {e}[/red]")
+
+    for shell_file in (Path.home() / ".profile", Path.home() / ".bashrc", Path.home() / ".zshrc"):
+        if _remove_startup_path_block(shell_file):
+            removed_paths.append(str(shell_file))
+
+    if purge and CONFIG_DIR.exists():
+        try:
+            shutil.rmtree(CONFIG_DIR)
+            removed_paths.append(str(CONFIG_DIR))
+        except Exception as e:
+            console.print(f"[red]Failed to remove config directory {CONFIG_DIR}: {e}[/red]")
+
+    console.print(Panel(
+        "[bold green]ArchPkg uninstall completed.[/bold green]\n\n"
+        "If your desktop menu still shows the app, log out and back in or refresh the menu cache.",
+        title="Uninstall Complete",
+        border_style="green"
+    ))
+
+    if removed_paths:
+        console.print("[dim]Removed:[/dim]")
+        for item in removed_paths:
+            console.print(f"  • {item}")
+
 def handle_search_errors(source_name: str, error: Exception) -> None:
     """Centralized error handling for search operations."""
     PackageHelperLogger.log_exception(logger, f"{source_name} search failed", error)
@@ -689,6 +775,10 @@ def show_custom_help() -> None:
 [bold yellow]🔄 UPGRADE ARCHPKG[/bold yellow]
    [cyan]archpkg upgrade[/cyan]                    Get latest version from GitHub
 
+[bold yellow]🧹 UNINSTALL ARCHPKG[/bold yellow]
+    [cyan]archpkg uninstall[/cyan]                  Remove launcher, desktop entry, and venv
+    [cyan]archpkg uninstall --purge[/cyan]          Also remove saved config
+
 [bold yellow]🌍 SUPPORTED DISTRIBUTIONS[/bold yellow]
    [green]Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora,
    openSUSE, + any distro with Flatpak/Snap support[/green]
@@ -711,7 +801,7 @@ def main() -> None:
         return
     
     # Check if first argument is a known subcommand
-    known_commands = ['search', 'suggest', 'upgrade', 'web', 'update', 'config', 'list-installed', 'service', 'cleanup', 'snapshot', 'setup', 'gui']
+    known_commands = ['search', 'suggest', 'upgrade', 'web', 'update', 'config', 'list-installed', 'service', 'cleanup', 'snapshot', 'setup', 'gui', 'uninstall']
     
     # If no arguments or first arg is not a known command, inject 'search' for backward compatibility
     if len(sys.argv) > 1 and sys.argv[1] not in known_commands and not sys.argv[1].startswith('-'):
@@ -776,6 +866,10 @@ def callback():
 
     🔄 UPGRADE ARCHPKG
        archpkg upgrade                    Get latest version from GitHub
+
+     🧹 UNINSTALL ARCHPKG
+         archpkg uninstall                  Remove launcher, desktop entry, and venv
+         archpkg uninstall --purge          Also remove saved config
 
     🌍 SUPPORTED DISTRIBUTIONS
        Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora,
@@ -1255,6 +1349,19 @@ def gui(
     except Exception as e:
         console.print(f"[red]Failed to launch GUI: {str(e)}[/red]")
         raise typer.Exit(1)
+
+
+@app.command()
+def uninstall(
+    purge: bool = Option(False, "--purge", help="Also remove saved ArchPkg configuration"),
+    yes: bool = Option(False, "--yes", "-y", help="Skip confirmation prompt"),
+    debug: bool = Option(False, "--debug", help="Enable debug logging")
+) -> None:
+    """Uninstall ArchPkg and remove its launcher files."""
+    if debug:
+        PackageHelperLogger.set_debug_mode(True)
+
+    uninstall_archpkg(purge=purge, confirm=not yes)
 
 
 @app.command()
