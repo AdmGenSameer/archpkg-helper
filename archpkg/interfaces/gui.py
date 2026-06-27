@@ -10,6 +10,7 @@ import sys
 import subprocess
 import threading
 import shutil
+import webbrowser
 from typing import List, Tuple, Optional, Dict
 from pathlib import Path
 
@@ -40,12 +41,13 @@ from archpkg.search.snap import search_snap
 from archpkg.package_management.command_gen import generate_command
 from archpkg.config.manager import get_user_config, save_user_config, set_config_option
 from archpkg.intelligence.advisor import assess_aur_trust, get_arch_news, apply_user_mode_defaults
+from archpkg.integrations.github import install_from_github, validate_github_url
 from archpkg.config.logging import get_logger
 from archpkg.search.ranking import deduplicate_packages, get_top_matches
 
 logger = get_logger(__name__)
 
-SEARCH_SOURCES = ["pacman", "aur", "apt", "dnf", "zypper", "flatpak", "snap"]
+SEARCH_SOURCES = ["pacman", "aur", "apt", "dnf", "zypper", "flatpak", "snap", "github"]
 SOURCE_COMMANDS = {
     "pacman": ["paru", "pacman"],
     "aur": [],
@@ -54,6 +56,7 @@ SOURCE_COMMANDS = {
     "zypper": ["zypper"],
     "flatpak": ["flatpak"],
     "snap": ["snap"],
+    "github": [],
 }
 
 
@@ -167,6 +170,29 @@ class InstallWorker(QThread):
             self.finished.emit(False, f"Error during installation: {str(e)}")
 
 
+class GitHubInstallWorker(QThread):
+    """Background worker for GitHub repository installation."""
+
+    finished = pyqtSignal(bool, str)
+    progress = pyqtSignal(str)
+
+    def __init__(self, repo_spec: str):
+        super().__init__()
+        self.repo_spec = repo_spec
+
+    def run(self):
+        """Execute GitHub repository installation in background."""
+        try:
+            self.progress.emit(f"Preparing GitHub install for {self.repo_spec}...")
+            success = install_from_github(self.repo_spec)
+            if success:
+                self.finished.emit(True, f"Successfully installed from GitHub: {self.repo_spec}")
+            else:
+                self.finished.emit(False, f"GitHub installation failed for {self.repo_spec}")
+        except Exception as e:
+            self.finished.emit(False, f"Error during GitHub installation: {str(e)}")
+
+
 class MainWindow(QMainWindow):
     """Main application window for archpkg-helper GUI."""
     
@@ -180,6 +206,9 @@ class MainWindow(QMainWindow):
         self.search_worker = None
         self.install_worker = None
         self.current_results = []
+        self.theme_mode = getattr(self.config, "theme_mode", "system")
+        if self.theme_mode not in {"system", "light", "dark"}:
+            self.theme_mode = "system"
         self.active_theme = "light"
         
         self.init_ui()
@@ -221,12 +250,20 @@ class MainWindow(QMainWindow):
         self.theme_badge = QLabel("Theme: Auto")
         self.theme_badge.setObjectName("ThemeBadge")
         header_layout.addWidget(self.theme_badge)
+
+        self.theme_toggle_button = QPushButton("Theme: Auto")
+        self.theme_toggle_button.setObjectName("ThemeToggleButton")
+        self.theme_toggle_button.clicked.connect(self.cycle_theme_mode)
+        header_layout.addWidget(self.theme_toggle_button)
         main_layout.addWidget(header)
         
         # Create tab widget
         self.tabs = QTabWidget()
         self.tabs.setTabPosition(QTabWidget.West)
         self.tabs.setDocumentMode(True)
+        self.tabs.tabBar().setExpanding(False)
+        self.tabs.tabBar().setUsesScrollButtons(True)
+        self.tabs.tabBar().setElideMode(Qt.ElideRight)
         main_layout.addWidget(self.tabs)
         
         # Create tabs
@@ -386,11 +423,13 @@ class MainWindow(QMainWindow):
         layout.addLayout(controls_layout)
 
         # Installed packages split view
-        split_layout = QHBoxLayout()
+        split_layout = QSplitter(Qt.Horizontal)
 
         apps_group = QGroupBox("Applications (Explicit/Manual)")
         apps_layout = QVBoxLayout()
         self.apps_list = QListWidget()
+        self.apps_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.apps_list.setTextElideMode(Qt.ElideNone)
         apps_layout.addWidget(self.apps_list)
         apps_group.setLayout(apps_layout)
         split_layout.addWidget(apps_group)
@@ -398,11 +437,16 @@ class MainWindow(QMainWindow):
         deps_group = QGroupBox("Dependencies (Auto-installed)")
         deps_layout = QVBoxLayout()
         self.deps_list = QListWidget()
+        self.deps_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.deps_list.setTextElideMode(Qt.ElideNone)
         deps_layout.addWidget(self.deps_list)
         deps_group.setLayout(deps_layout)
         split_layout.addWidget(deps_group)
 
-        layout.addLayout(split_layout)
+        split_layout.setStretchFactor(0, 1)
+        split_layout.setStretchFactor(1, 1)
+        split_layout.setChildrenCollapsible(False)
+        layout.addWidget(split_layout)
         
         # Info label
         self.installed_info_label = QLabel("Click 'Refresh List' to load applications and dependencies")
@@ -549,6 +593,23 @@ class MainWindow(QMainWindow):
         
         automation_group.setLayout(automation_layout)
         layout.addWidget(automation_group)
+
+        # Appearance settings
+        appearance_group = QGroupBox("Appearance")
+        appearance_layout = QVBoxLayout()
+
+        self.theme_mode_combo = QComboBox()
+        self.theme_mode_combo.addItems(["system", "light", "dark"])
+        self.theme_mode_combo.setCurrentText(self.theme_mode)
+        self.theme_mode_combo.currentTextChanged.connect(self.on_theme_mode_changed)
+        appearance_layout.addWidget(self.theme_mode_combo)
+
+        appearance_info = QLabel("System follows your desktop theme. Light and dark stay fixed until changed again.")
+        appearance_info.setWordWrap(True)
+        appearance_layout.addWidget(appearance_info)
+
+        appearance_group.setLayout(appearance_layout)
+        layout.addWidget(appearance_group)
         
         # Distribution info
         info_group = QGroupBox("System Information")
@@ -584,13 +645,15 @@ class MainWindow(QMainWindow):
 
     def refresh_theme_if_needed(self):
         """Re-apply stylesheet when system theme changes."""
+        if self.theme_mode != "system":
+            return
         detected = self.detect_system_theme()
         if detected != self.active_theme:
             self.apply_stylesheet()
     
     def update_source_combo(self):
         """Update source combo box based on detected distro."""
-        sources = ["All"] + SEARCH_SOURCES
+        sources = ["All", "Pacman", "AUR", "APT", "DNF", "Zypper", "Flatpak", "Snap", "GitHub"]
         
         self.source_combo.clear()
         self.source_combo.addItems(sources)
@@ -639,12 +702,20 @@ class MainWindow(QMainWindow):
             return
         
         source_selection = self.source_combo.currentText()
+        source_key = source_selection.lower()
+
+        if source_key == "github":
+            if self.is_github_repo_spec(query):
+                self.install_from_github_repo(query)
+            else:
+                self.open_github_search(query)
+            return
         
         # Determine which sources to search
         if source_selection == "All":
             sources = self.get_available_search_sources()
         else:
-            sources = [source_selection.lower()]
+            sources = [source_key]
         
         self.status_bar.showMessage(f"Searching for '{query}'...")
         self.search_button.setEnabled(False)
@@ -815,6 +886,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.install_button.setEnabled(True)
         self.remove_button.setEnabled(True)
+        self.search_button.setEnabled(True)
         
         self.log_to_output(message)
         
@@ -964,10 +1036,14 @@ class MainWindow(QMainWindow):
             deps = deps - apps
 
             for pkg in sorted(apps):
-                self.apps_list.addItem(pkg)
+                item = QListWidgetItem(pkg)
+                item.setToolTip(pkg)
+                self.apps_list.addItem(item)
 
             for pkg in sorted(deps):
-                self.deps_list.addItem(pkg)
+                item = QListWidgetItem(pkg)
+                item.setToolTip(pkg)
+                self.deps_list.addItem(item)
 
             total_count = len(apps) + len(deps)
             self.installed_info_label.setText(
@@ -1070,10 +1146,103 @@ class MainWindow(QMainWindow):
         self.proactive_advice_check.setChecked(self.config.proactive_system_advice)
         
         self.save_settings()
+
+    def on_theme_mode_changed(self, mode: str):
+        """Handle theme mode changes from the settings tab."""
+        if mode not in {"system", "light", "dark"}:
+            return
+
+        self.theme_mode = mode
+        self.config.theme_mode = mode
+        self.save_settings()
+        self.apply_stylesheet()
+
+    def cycle_theme_mode(self):
+        """Cycle the theme mode from the header button."""
+        order = ["system", "light", "dark"]
+        current_index = order.index(self.theme_mode) if self.theme_mode in order else 0
+        next_mode = order[(current_index + 1) % len(order)]
+        if hasattr(self, "theme_mode_combo"):
+            self.theme_mode_combo.blockSignals(True)
+            self.theme_mode_combo.setCurrentText(next_mode)
+            self.theme_mode_combo.blockSignals(False)
+        self.on_theme_mode_changed(next_mode)
+
+    def open_github_search(self, query: str):
+        """Open a GitHub repository search for the current query."""
+        url = f"https://github.com/search?q={query.replace(' ', '+')}&type=repositories"
+        try:
+            self.results_table.setRowCount(0)
+            self.current_results = []
+            self.install_button.setEnabled(False)
+            self.remove_button.setEnabled(False)
+            webbrowser.open(url)
+            self.status_bar.showMessage("Opened GitHub search in browser")
+            self.results_meta.setText("Results: GitHub search opened in browser")
+            self.log_to_output(f"Opened GitHub search: {url}")
+        except Exception as e:
+            self.status_bar.showMessage("Failed to open GitHub search")
+            QMessageBox.warning(
+                self,
+                "GitHub Search Failed",
+                f"Could not open GitHub search.\n\nURL: {url}\n\nError: {str(e)}"
+            )
+
+    def is_github_repo_spec(self, query: str) -> bool:
+        """Return True when the input looks like a GitHub repository specification."""
+        query = query.strip()
+        if not query or " " in query:
+            return False
+
+        return (
+            query.startswith("github:")
+            or query.startswith("https://github.com/")
+            or query.startswith("http://github.com/")
+            or query.startswith("git@github.com:")
+            or (query.count("/") == 1 and "/" in query)
+        )
+
+    def install_from_github_repo(self, repo_spec: str):
+        """Install a project directly from a GitHub repository spec."""
+        repo_url = validate_github_url(repo_spec)
+        if not repo_url:
+            QMessageBox.warning(
+                self,
+                "Invalid GitHub Repo",
+                "Enter a GitHub repository as github:user/repo, https://github.com/user/repo, or git@github.com:user/repo.git"
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm GitHub Install",
+            f"Install and build from GitHub repository?\n\n{repo_url}",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply != QMessageBox.Yes:
+            return
+
+        self.log_to_output(f"Starting GitHub install: {repo_url}")
+        self.status_bar.showMessage(f"Installing from GitHub: {repo_url}...")
+        self.progress_bar.setVisible(True)
+        self.progress_bar.setRange(0, 0)
+        self.search_button.setEnabled(False)
+        self.install_button.setEnabled(False)
+        self.remove_button.setEnabled(False)
+
+        self.install_worker = GitHubInstallWorker(repo_url)
+        self.install_worker.progress.connect(self.log_to_output)
+        self.install_worker.finished.connect(self.installation_finished)
+        self.install_worker.start()
     
     def save_settings(self):
         """Save user settings."""
         self.config.user_mode = self.mode_combo.currentText()
+        if hasattr(self, "theme_mode_combo"):
+            self.config.theme_mode = self.theme_mode_combo.currentText()
+            self.theme_mode = self.config.theme_mode
         self.config.auto_handle_arch_news = self.auto_news_check.isChecked()
         self.config.auto_review_aur_trust = self.auto_trust_check.isChecked()
         self.config.auto_snapshot_before_update = self.auto_snapshot_check.isChecked()
@@ -1112,10 +1281,27 @@ class MainWindow(QMainWindow):
     
     def apply_stylesheet(self):
         """Apply subtle software-center stylesheet based on system theme."""
-        self.active_theme = self.detect_system_theme()
+        if self.theme_mode == "system":
+            self.active_theme = self.detect_system_theme()
+        else:
+            self.active_theme = self.theme_mode
 
         if self.theme_badge:
-            self.theme_badge.setText(f"Theme: {self.active_theme.title()} (System)")
+            mode_label = "System" if self.theme_mode == "system" else "Manual"
+            self.theme_badge.setText(f"Theme: {self.active_theme.title()} ({mode_label})")
+
+        if hasattr(self, "theme_toggle_button"):
+            button_label = {
+                "system": "Theme: Auto",
+                "light": "Theme: Light",
+                "dark": "Theme: Dark",
+            }.get(self.theme_mode, "Theme: Auto")
+            self.theme_toggle_button.setText(button_label)
+
+        if hasattr(self, "theme_mode_combo"):
+            self.theme_mode_combo.blockSignals(True)
+            self.theme_mode_combo.setCurrentText(self.theme_mode)
+            self.theme_mode_combo.blockSignals(False)
 
         light_tokens = {
             "main_bg": "#f4f6fa",
@@ -1210,7 +1396,7 @@ class MainWindow(QMainWindow):
             QComboBox::drop-down {{ border: none; }}
             QComboBox QAbstractItemView {{ background: {panel_bg}; selection-background-color: {accent_soft}; color: {text}; }}
             QTabWidget::pane {{ border: 1px solid {border}; border-radius: 12px; background: {panel_bg}; }}
-            QTabBar::tab {{ background: {tab_bg}; color: {muted}; padding: 12px 18px; margin: 6px 6px; border: 1px solid {border}; border-radius: 10px; min-width: 160px; text-align: left; font-weight: 600; }}
+            QTabBar::tab {{ background: {tab_bg}; color: {muted}; padding: 12px 18px; margin: 6px 6px; border: 1px solid {border}; border-radius: 10px; min-width: 130px; text-align: left; font-weight: 600; }}
             QTabBar::tab:selected {{ background: {accent}; color: #ffffff; border: 1px solid {accent_dark}; }}
             QTabBar::tab:hover {{ background: {tab_hover}; }}
             QProgressBar {{ border: 1px solid {border}; border-radius: 8px; text-align: center; background: {panel_bg}; color: {muted}; }}
