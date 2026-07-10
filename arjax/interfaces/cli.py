@@ -717,7 +717,7 @@ def batch_install_packages(package_names: List[str]) -> None:
 def show_custom_help() -> None:
     """Display comprehensive custom help text."""
     help_text = """
-[bold cyan]🎯 ArchPkg Helper - Universal Package Manager for All Linux Distros[/bold cyan]
+[bold cyan]🎯 Arjax - Universal Package Manager for All Linux Distros[/bold cyan]
 
 [bold yellow]📦 What does it do?[/bold yellow]
    Searches and installs packages across multiple sources:
