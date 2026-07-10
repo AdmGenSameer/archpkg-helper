@@ -1,5 +1,3 @@
----
-
 <h2 align="center">🎯 Open Source Programmes ⭐</h2>
 <p align="center">
   <b>This project is now OFFICIALLY accepted for:</b>
