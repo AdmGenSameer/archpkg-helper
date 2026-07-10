@@ -29,6 +29,7 @@ class Recipe:
     """Declarative software recipe used by the installation engine."""
 
     name: str
+    display_name: Optional[str] = None
     description: str = ""
     aliases: List[str] = field(default_factory=list)
     providers: Dict[str, ProviderConfig] = field(default_factory=dict)

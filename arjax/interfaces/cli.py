@@ -54,7 +54,9 @@ from arjax.package_management.snapshot import (
     delete_snapshot,
     detect_snapshot_tool
 )
-from arjax.installation import InstallationOrchestrator
+from arjax.installation.orchestrator import InstallationOrchestrator
+from arjax.installation.recipes import RecipeStore
+from arjax.installation.providers import ProviderManager
 from arjax.intelligence.advisor import apply_user_mode_defaults, get_arch_news, assess_aur_trust
 from arjax.search.ranking import deduplicate_packages, get_top_matches, is_valid_package
 
@@ -179,22 +181,41 @@ def detect_distro() -> str:
                 border_style="yellow"
             ))
         
-        return detected_family
+        return dist
         
     except Exception as e:
         PackageHelperLogger.log_exception(logger, "Failed to detect distribution", e)
-        console.print(Panel(
-            f"[red]Failed to detect your Linux distribution.[/red]\n\n"
-            f"[bold]Error details:[/bold] {str(e)}\n\n"
-            "[bold cyan]Troubleshooting steps:[/bold cyan]\n"
-            "- Ensure you're running on a Linux system\n"
-            "- Check if the 'distro' package is properly installed\n"
-            "- Try reinstalling: [cyan]pip install --upgrade distro[/cyan]\n"
-            "- Report this issue if the problem persists",
-            title="Distribution Detection Failed",
-            border_style="red"
-        ))
+        console.print(f"[red]Error detecting distribution: {e}[/red]")
         return "unknown"
+
+def get_os_display_name() -> str:
+    """Read /etc/os-release to get the human-readable OS name."""
+    try:
+        import os
+        if os.path.exists("/etc/os-release"):
+            with open("/etc/os-release", "r", encoding="utf-8") as f:
+                content = f.read()
+                
+            os_info = {}
+            for line in content.splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    os_info[k.strip()] = v.strip().strip('"\'')
+                    
+            if "PRETTY_NAME" in os_info and os_info["PRETTY_NAME"]:
+                return os_info["PRETTY_NAME"]
+            if "NAME" in os_info and os_info["NAME"]:
+                return os_info["NAME"]
+            if "ID" in os_info and os_info["ID"]:
+                return os_info["ID"]
+    except Exception as e:
+        logger.debug(f"Failed to read /etc/os-release: {e}")
+        
+    try:
+        return distro.name(pretty=True) or distro.name() or distro.id()
+    except Exception:
+        return "Unknown Linux"
+
     
 # Search result deduplication and ranking functions are now in arjax.search_ranking
 
@@ -286,16 +307,17 @@ def github_fallback(query: str, unavailable_sources: Optional[List[str]] = None)
 
     # Determine distro-aware install commands
     detected_distro = detect_distro()
+    distro_family = DISTRO_MAP.get(detected_distro, "unknown")
     install_snap_cmd = "Check your distro docs for snapd"
     install_flatpak_cmd = "Check your distro docs for flatpak"
 
-    if detected_distro in {"ubuntu", "debian"}:
+    if distro_family == "debian":
         install_snap_cmd = "sudo apt install snapd"
         install_flatpak_cmd = "sudo apt install flatpak"
-    elif detected_distro == "fedora":
+    elif distro_family == "fedora":
         install_snap_cmd = "sudo dnf install snapd"
         install_flatpak_cmd = "sudo dnf install flatpak"
-    elif detected_distro == "suse":
+    elif distro_family == "suse":
         install_snap_cmd = "sudo zypper install snapd"
         install_flatpak_cmd = "sudo zypper install flatpak"
     elif detected_distro in {"arch", "manjaro"}:
@@ -908,7 +930,7 @@ def callback():
 
 @app.command()
 def install(
-    package: str = Argument(..., help="Package or recipe name to install"),
+    package: List[str] = Argument(..., help="Package or recipe name to install"),
     provider: Optional[str] = Option(None, "--provider", "-p", help="Force a specific provider: repository, vendor, github, flatpak, snap, appimage"),
     debug: bool = Option(False, "--debug", help="Enable debug logging")
 ) -> None:
@@ -920,9 +942,41 @@ def install(
     """
     if debug:
         PackageHelperLogger.set_debug_mode(True)
+        
+    package_name = " ".join(package)
 
-    orchestrator = InstallationOrchestrator()
-    result = orchestrator.install(package, provider_hint=provider)
+    recipe_store = RecipeStore()
+    provider_manager = ProviderManager()
+    
+    recipe = recipe_store.find(package_name)
+    
+    selected_provider = None
+    candidate_providers = []
+    for prov in provider_manager.providers:
+        if provider and prov.name != provider.lower().strip():
+            continue
+        if not prov.supports(package_name, recipe):
+            continue
+        candidate_providers.append(prov)
+        
+    if candidate_providers:
+        selected_provider = candidate_providers[0]
+        
+    console.print()
+    if recipe:
+        console.print(f"Package: {recipe.display_name or recipe.name}")
+        console.print("\nRecipe: Found")
+    else:
+        console.print(f"Package: {package_name}")
+        console.print("\nRecipe: Not Found")
+        
+    if selected_provider:
+        console.print(f"\nSelected Provider: {selected_provider.name}\n")
+    else:
+        console.print("\nSelected Provider: None (No supported provider found)\n")
+
+    orchestrator = InstallationOrchestrator(provider_manager=provider_manager)
+    result = orchestrator.install(package_name, provider_hint=provider)
 
     if result.success:
         return
@@ -978,7 +1032,9 @@ def search(
 
     # Detect distribution and search
     detected = detect_distro()
-    console.print(f"\nSearching for '{query_str}' on [cyan]{detected}[/cyan] platform...\n")
+    detected_family = DISTRO_MAP.get(detected, "unknown")
+    os_display_name = get_os_display_name()
+    console.print(f"\nSearching for '{query_str}' on [cyan]{os_display_name}[/cyan]...\n")
 
     # Generate query variations for better matching
     query_variations = normalize_query(query_str)
@@ -1013,7 +1069,7 @@ def search(
         logger.debug(f"Searching with query variant: '{query_variant}'")
         
         # Search based on detected distribution
-        if detected == "arch":
+        if detected_family == "arch":
             try:
                 logger.debug("Starting AUR search")
                 aur_results = search_aur(
@@ -1036,7 +1092,7 @@ def search(
                 if query_variant == query_str:
                     search_errors.append("Pacman")
 
-        elif detected == "debian":
+        elif detected_family == "debian":
             try:
                 logger.debug("Starting APT search")
                 apt_results = search_apt(query_variant, cache_manager if use_cache else None)
@@ -1046,7 +1102,7 @@ def search(
                 if query_variant == query_str:
                     search_errors.append("APT")
 
-        elif detected == "fedora":
+        elif detected_family == "fedora":
             try:
                 logger.debug("Starting DNF search")
                 dnf_results = search_dnf(query_variant, cache_manager if use_cache else None)
@@ -1064,7 +1120,7 @@ def search(
             except Exception as e:
                 logger.debug(f"RPM search failed: {e}")
                 
-        elif detected == "suse":
+        elif detected_family == "suse":
             logger.info("Searching openSUSE-based repositories (Zypper)")
             
             try:
@@ -1107,8 +1163,30 @@ def search(
     if pkgs_org_thread and pkgs_org_thread.is_alive():
         logger.debug("Waiting for background pkgs.org search...")
         pkgs_org_thread.join(timeout=5.0)
-    
-    if not results:
+
+    # Search recipes
+    recipe_store = RecipeStore()
+    recipe_matches = []
+    lower_query = query_str.lower()
+    for location in recipe_store.load_all():
+        recipe = location.recipe
+        if (lower_query in recipe.name.lower() or 
+            (recipe.display_name and lower_query in recipe.display_name.lower()) or 
+            any(lower_query in a.lower() for a in recipe.aliases)):
+            recipe_matches.append(recipe)
+
+    if recipe_matches:
+        console.print("\n[bold cyan]Recipe Matches[/bold cyan]\n")
+        for r in recipe_matches:
+            name = r.display_name or r.name
+            console.print(f"[green]✓[/green] [bold]{name}[/bold]")
+            if r.providers:
+                console.print("  Providers:")
+                for p in r.providers:
+                    console.print(f"    [blue]{p}[/blue]")
+        console.print()
+
+    if not results and not recipe_matches:
         logger.info("No results found in local package managers")
         
         if pkgs_org_results:
@@ -1158,7 +1236,7 @@ def search(
             console.print()
         
         # Show special guidance for Brave browser on openSUSE
-        if detected == "suse" and "brave" in query_str.lower():
+        if detected_family == "suse" and "brave" in query_str.lower():
             show_opensuse_brave_guidance()
         
         # Always show the GitHub fallback and installation suggestions
@@ -1184,12 +1262,16 @@ def search(
 
     top_matches = get_top_matches(query_str, deduplicated_results, limit=limit)
     if not top_matches:
-        console.print("[yellow]No close matches found.[/yellow]")
-        raise typer.Exit(1)
+        if not recipe_matches:
+            console.print("[yellow]No close matches found.[/yellow]")
+            raise typer.Exit(1)
+        else:
+            console.print("\n[cyan]Search is now read-only. Install with: arjax install <package>[/cyan]")
+            return
 
     # Display results with terminal width constraints
     console_width = console.width if hasattr(console, 'width') else 120
-    table = Table(title="Matching Packages", width=min(console_width, 120), expand=False)
+    table = Table(title="Repository Matches", width=min(console_width, 120), expand=False)
     table.add_column("Index", style="cyan", no_wrap=True)
     table.add_column("Package Name", style="green")
     table.add_column("Source", style="blue")

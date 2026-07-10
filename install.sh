@@ -134,6 +134,27 @@ install_git_package() {
     esac
 }
 
+show_spinner() {
+    local pid=$1
+    local message="$2"
+    local delay=0.1
+    local spin=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+    # Hide cursor
+    tput civis 2>/dev/null || true
+    while kill -0 "$pid" 2>/dev/null; do
+        for c in "${spin[@]}"; do
+            if ! kill -0 "$pid" 2>/dev/null; then
+                break
+            fi
+            printf "\r\033[K %s %s" "$c" "$message"
+            sleep $delay
+        done
+    done
+    # Restore cursor and clear line
+    tput cnorm 2>/dev/null || true
+    printf "\r\033[K"
+}
+
 request_dep_install() {
     local dep_name="$1"
     local install_cmds="$2"
@@ -167,14 +188,47 @@ request_dep_install() {
     fi
 
     if [ "$do_install" = true ]; then
-        log "Installing $dep_name..."
-        if eval "$install_action"; then
+        init_sudo
+        if [ -n "$SUDO" ]; then
+            echo ""
+            log "Authentication required to install $dep_name."
+            if ! $SUDO -v; then
+                log "Authentication failed."
+                echo ""
+                echo "[x] $dep_name was not found."
+                echo ""
+                if [ -n "$extra_msg" ]; then
+                    echo -e "$extra_msg"
+                    echo ""
+                fi
+                echo "Detected OS: $os_name"
+                echo ""
+                echo "You can install it manually with:"
+                echo -e "    $install_cmds"
+                echo ""
+                echo "Or rerun this installer with --install-deps to install missing dependencies automatically."
+                exit 1
+            fi
+        fi
+
+        # Run action in background
+        eval "$install_action" >/dev/null 2>&1 &
+        local action_pid=$!
+
+        # Show spinner while running
+        show_spinner "$action_pid" "Installing $dep_name..."
+
+        wait "$action_pid"
+        local exit_code=$?
+
+        if [ "$exit_code" -eq 0 ]; then
             log "$dep_name installed successfully"
             return 0
         else
             log "Failed to install $dep_name automatically"
         fi
     fi
+
 
     # If we didn't install or installation failed:
     echo ""
