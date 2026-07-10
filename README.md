@@ -12,7 +12,7 @@
 
 # Arjax
 
-**Arjax** is a cross-distribution package discovery and installation tool for Linux. It separates package search from installation and uses a **provider-based architecture** to install software from native repositories, vendor installers, GitHub releases, Flatpak, Snap, and AppImages through declarative YAML recipes.
+**Arjax** (previously **archpkg-helper**) is now in version 2. It is a cross-distribution package discovery and installation tool for Linux. It separates package search from installation and uses a **provider-based architecture** to install software from native repositories, vendor installers, GitHub releases, Flatpak, Snap, and AppImages through declarative YAML recipes.
 
 ## Table of Contents
 
