@@ -151,7 +151,11 @@ request_dep_install() {
         echo "$dep_name is required but is not installed."
         echo "Detected OS: $os_name"
         echo ""
-        read -r -p "Install $dep_name automatically? [Y/n]: " choice
+        if [ -c /dev/tty ]; then
+            read -r -p "Install $dep_name automatically? [Y/n]: " choice < /dev/tty
+        else
+            read -r -p "Install $dep_name automatically? [Y/n]: " choice
+        fi
         case "$choice" in
             [nN]|[nN][oO])
                 do_install=false
@@ -567,7 +571,11 @@ configure_arch_profile() {
     if [ "$YES_TO_ALL" = true ]; then
         log "Non-interactive mode: selecting normal profile"
     else
-        read -r -p "Enter choice [1/2] (default: 1): " ARJAX_PROFILE_CHOICE
+        if [ -c /dev/tty ]; then
+            read -r -p "Enter choice [1/2] (default: 1): " ARJAX_PROFILE_CHOICE < /dev/tty
+        else
+            read -r -p "Enter choice [1/2] (default: 1): " ARJAX_PROFILE_CHOICE
+        fi
     fi
 
     local arjax_user_mode="normal"
