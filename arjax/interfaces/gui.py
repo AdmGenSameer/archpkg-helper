@@ -672,24 +672,25 @@ class MainWindow(QMainWindow):
 
     def build_remove_command(self, pkg_name: str, source: str) -> Optional[str]:
         """Build a removal command for the selected package and source."""
+        from arjax.package_management.command_gen import build_privileged_command
         source = source.lower()
 
         if source == "flatpak":
             return f"flatpak uninstall {pkg_name}"
         if source == "snap":
-            return f"sudo snap remove {pkg_name}"
+            return build_privileged_command(f"snap remove {pkg_name}")
         if source in {"pacman", "aur"}:
             if shutil.which("paru"):
                 return f"paru -Rns {pkg_name}"
             if shutil.which("pacman"):
-                return f"sudo pacman -Rns {pkg_name}"
+                return build_privileged_command(f"pacman -Rns {pkg_name}")
             return None
         if source == "apt":
-            return f"sudo apt remove {pkg_name}"
+            return build_privileged_command(f"apt remove {pkg_name}")
         if source == "dnf":
-            return f"sudo dnf remove {pkg_name}"
+            return build_privileged_command(f"dnf remove {pkg_name}")
         if source == "zypper":
-            return f"sudo zypper remove {pkg_name}"
+            return build_privileged_command(f"zypper remove {pkg_name}")
 
         return None
 

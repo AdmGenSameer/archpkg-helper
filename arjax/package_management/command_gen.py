@@ -71,6 +71,13 @@ def validate_package_name(pkg_name: str) -> tuple[bool, str]:
     logger.debug(f"Package name '{pkg_name}' is valid")
     return True, "Valid package name"
 
+def build_privileged_command(command: str) -> str:
+    """Prepend sudo if not running as root."""
+    import os
+    if hasattr(os, 'geteuid') and os.geteuid() == 0:
+        return command
+    return f"sudo {command}"
+
 def generate_command(pkg_name: str, source: str) -> Optional[str]:
     """Generate install command with detailed validation and error handling.
     
@@ -116,7 +123,7 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
                 logger.info(f"Generated paru command: {command}")
                 return command
             elif check_command_availability('pacman'):
-                command = f"sudo pacman -S {pkg_name}"
+                command = build_privileged_command(f"pacman -S {pkg_name}")
                 logger.info(f"Generated pacman command (paru not available): {command}")
                 return command
             else:
@@ -144,7 +151,7 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
                 raise PackageManagerNotFound(
                     "No AUR helper found. Install one of the following:\n"
                     "- paru (recommended): https://github.com/morganamilo/paru\n"
-                    "- yay: sudo pacman -S yay\n"
+                    f"- yay: {build_privileged_command('pacman -S yay')}\n"
                     "- Or build manually from AUR"
                 )
             # Add --review flag for paru to enable PKGBUILD review
@@ -171,7 +178,7 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
                 raise PackageManagerNotFound(
                     "APT is not available. This command requires a Debian/Ubuntu-based system."
                 )
-            command = f"sudo apt install {pkg_name}"
+            command = build_privileged_command(f"apt install {pkg_name}")
             logger.info(f"Generated APT command: {command}")
             return command
             
@@ -182,7 +189,7 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
                 raise PackageManagerNotFound(
                     "DNF is not available. This command requires a Fedora/RHEL-based system."
                 )
-            command = f"sudo dnf install {pkg_name}"
+            command = build_privileged_command(f"dnf install {pkg_name}")
             logger.info(f"Generated DNF command: {command}")
             return command
             
@@ -193,7 +200,7 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
                 raise PackageManagerNotFound(
                     "Zypper is not available. This command requires an openSUSE-based system."
                 )
-            command = f"sudo zypper install {pkg_name}"
+            command = build_privileged_command(f"zypper install {pkg_name}")
             logger.info(f"Generated Zypper command: {command}")
             return command
             
@@ -204,7 +211,7 @@ def generate_command(pkg_name: str, source: str) -> Optional[str]:
                 raise PackageManagerNotFound(
                     "Snap is not installed. Install snapd with your system package manager."
                 )
-            command = f"sudo snap install {pkg_name}"
+            command = build_privileged_command(f"snap install {pkg_name}")
             logger.info(f"Generated Snap command: {command}")
             return command
             

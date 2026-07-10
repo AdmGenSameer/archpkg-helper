@@ -231,8 +231,12 @@ class CMakeHandler(ProjectTypeHandler):
                 return False
 
             # Install
-            self.log_command(["sudo", "make", "install"], "Installing with make")
-            result = subprocess.run(["sudo", "make", "install"], capture_output=True, text=True)
+            from arjax.package_management.command_gen import build_privileged_command
+            import shlex
+            cmd_str = build_privileged_command("make install")
+            cmd_list = shlex.split(cmd_str)
+            self.log_command(cmd_list, "Installing with make install")
+            result = subprocess.run(cmd_list, capture_output=True, text=True)
             if result.returncode == 0:
                 print("  ✓ CMake project installed successfully")
                 return True
@@ -270,9 +274,13 @@ class MakefileHandler(ProjectTypeHandler):
                 print("  ✓ Makefile project installed successfully")
                 return True
             else:
-                # Try with sudo
-                self.log_command(["sudo", "make", "install"], "Installing with sudo make")
-                result = subprocess.run(["sudo", "make", "install"], capture_output=True, text=True)
+                # Try with elevated privileges if needed
+                from arjax.package_management.command_gen import build_privileged_command
+                import shlex
+                cmd_str = build_privileged_command("make install")
+                cmd_list = shlex.split(cmd_str)
+                self.log_command(cmd_list, "Installing with make install")
+                result = subprocess.run(cmd_list, capture_output=True, text=True)
                 if result.returncode == 0:
                     print("  ✓ Makefile project installed successfully")
                     return True

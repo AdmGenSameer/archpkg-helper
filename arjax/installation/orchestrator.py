@@ -184,7 +184,10 @@ class InstallationOrchestrator:
             return f"{seconds:.2f} s"
 
         console.print()
-        console.print("[bold cyan]Installation Complete[/bold cyan]")
+        if result.success:
+            console.print("[bold cyan]Installation Complete[/bold cyan]")
+        else:
+            console.print("[bold red]Installation Failed[/bold red]")
         console.print("[dim]───────────────────────────────────────[/dim]")
         console.print(f"Resolving recipe.......... {fmt_time(resolve_time)}")
         console.print(f"Selecting provider........ {fmt_time(select_time)}")
@@ -198,6 +201,7 @@ class InstallationOrchestrator:
         console.print(f"Provider: {result.provider_name}")
         console.print(f"Time    : {fmt_time(total_time)}")
         console.print(f"Status  : {status_text}")
-        if not result.success and result.error:
-            console.print(f"Error   : [red]{result.error}[/red]")
+        if not result.success:
+            failure_reason = result.error or result.message or "Unknown failure"
+            console.print(f"Reason  : [red]{failure_reason}[/red]")
         console.print()

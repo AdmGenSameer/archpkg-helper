@@ -930,7 +930,7 @@ def callback():
 
 @app.command()
 def install(
-    package: List[str] = Argument(..., help="Package or recipe name to install"),
+    package: List[str] = Argument(None, help="Package or recipe name to install"),
     provider: Optional[str] = Option(None, "--provider", "-p", help="Force a specific provider: repository, vendor, github, flatpak, snap, appimage"),
     debug: bool = Option(False, "--debug", help="Enable debug logging")
 ) -> None:
@@ -940,6 +940,10 @@ def install(
     The installation path is separate from search. Recipes can map a package
     name to repository, vendor, GitHub, Flatpak, Snap, or AppImage metadata.
     """
+    if not package:
+        console.print("[red]Error: Missing argument 'PACKAGE'. You must specify a package to install.[/red]")
+        raise typer.Exit(1)
+
     if debug:
         PackageHelperLogger.set_debug_mode(True)
         
