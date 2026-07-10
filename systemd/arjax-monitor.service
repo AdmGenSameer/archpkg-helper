@@ -1,0 +1,20 @@
+[Unit]
+Description=arjax Background Monitor
+Documentation=https://github.com/yourusername/arjax
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -m arjax.monitor --once
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+PrivateTmp=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.cache/arjax %h/.config/arjax %h/.arjax
+
+[Install]
+WantedBy=default.target

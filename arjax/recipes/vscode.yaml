@@ -1,0 +1,15 @@
+name: vscode
+description: Visual Studio Code recipe for the provider-based installation engine
+aliases:
+  - visual studio code
+  - code
+providers:
+  repository:
+    package: code
+  vendor:
+    package: code
+    package_manager: apt
+  flatpak:
+    app_id: com.visualstudio.code
+  snap:
+    snap_id: code

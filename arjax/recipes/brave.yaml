@@ -1,0 +1,14 @@
+name: brave
+description: Brave browser recipe for the provider-based installation engine
+aliases:
+  - brave-browser
+providers:
+  repository:
+    package: brave-browser
+  vendor:
+    package: brave-browser
+    package_manager: apt
+  flatpak:
+    app_id: com.brave.Browser
+  snap:
+    snap_id: brave

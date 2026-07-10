@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "archpkg"
+name = "arjax"
 version = "0.1.1"
-description = "Your ArchPkg CLI tool"
+description = "Arjax CLI tool"
 authors = [{ name="AdmGenSameer", email="sameers00324@gmail.com" }]
 readme = "README.md"
 requires-python = ">=3"
@@ -16,7 +16,8 @@ dependencies = [
   "typer[all]",
   "distro",
   "beautifulsoup4",
-  "rapidfuzz>=3.0.0"
+  "rapidfuzz>=3.0.0",
+  "PyYAML"
 ]
 
 [project.optional-dependencies]
@@ -25,23 +26,25 @@ gui = ["PyQt5>=5.15.0"]
 all = ["GitPython", "PyQt5>=5.15.0"]
 
 [project.scripts]
-archpkg = "archpkg.interfaces.cli:main"
+arjax = "arjax.interfaces.cli:main"
+archpkg = "arjax.interfaces.cli:main"
 
 [tool.setuptools]
 packages = [
-  "archpkg",
-  "archpkg.interfaces",
-  "archpkg.search",
-  "archpkg.config",
-  "archpkg.package_management",
-  "archpkg.intelligence",
-  "archpkg.integrations",
-  "archpkg.system",
-  "archpkg.core"
+  "arjax",
+  "arjax.interfaces",
+  "arjax.search",
+  "arjax.config",
+  "arjax.package_management",
+  "arjax.intelligence",
+  "arjax.integrations",
+  "arjax.installation",
+  "arjax.system",
+  "arjax.core"
 ]
 
 [tool.setuptools.package-data]
-archpkg = ["*.yaml", "*.yml", "*.json", "templates/*.html", "templates/**/*"]
+arjax = ["*.yaml", "*.yml", "recipes/*.yaml", "recipes/*.yml", "*.json", "templates/*.html", "templates/**/*"]
 
 [tool.setuptools.data-files]
-"share/applications" = ["archpkg-helper.desktop"]
+"share/applications" = ["arjax.desktop"]

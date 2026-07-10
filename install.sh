@@ -1,9 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_NAME="archpkg"
-REPO_ARCHIVE_URL="https://github.com/AdmGenSameer/archpkg-helper/archive/refs/heads/main.zip"
-INSTALL_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/archpkg-helper"
+APP_NAME="arjax"
+REPO_ARCHIVE_URL="https://github.com/AdmGenSameer/arjax/archive/refs/heads/main.zip"
+INSTALL_ROOT="${XDG_DATA_HOME:-$HOME/.local/share}/arjax"
 VENV_DIR="$INSTALL_ROOT/venv"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 DESKTOP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
@@ -239,7 +239,7 @@ create_venv() {
     fi
 }
 
-# Install ArchPkg and the GUI dependency into the private venv.
+# Install Arjax and the GUI dependency into the private venv.
 install_package() {
     local pip_bin="$VENV_DIR/bin/pip"
 
@@ -255,7 +255,7 @@ install_package() {
     log "Upgrading packaging tools..."
     "$pip_bin" install --upgrade pip setuptools wheel >/dev/null
 
-    log "Installing ArchPkg from $SOURCE_SPEC..."
+    log "Installing Arjax from $SOURCE_SPEC..."
     "$pip_bin" install --upgrade "$SOURCE_SPEC"
 
     log "Installing GUI dependency..."
@@ -268,7 +268,7 @@ create_launcher() {
 
     cat > "$BIN_DIR/$APP_NAME" <<EOF
 #!/bin/bash
-exec "$VENV_DIR/bin/archpkg" "\$@"
+exec "$VENV_DIR/bin/arjax" "\$@"
 EOF
 
     chmod +x "$BIN_DIR/$APP_NAME"
@@ -290,11 +290,12 @@ import sys
 
 shell_file = Path(sys.argv[1])
 block_file = Path(sys.argv[2])
-block = "\n# archpkg-helper: make user-local commands available\nif [ -d \"$HOME/.local/bin\" ]; then\n    export PATH=\"$HOME/.local/bin:$PATH\"\nfi\n"
+block1 = "\n# arjax-helper: make user-local commands available\nif [ -d \"$HOME/.local/bin\" ]; then\n    export PATH=\"$HOME/.local/bin:$PATH\"\nfi\n"
+block2 = "\n# archpkg-helper: make user-local commands available\nif [ -d \"$HOME/.local/bin\" ]; then\n    export PATH=\"$HOME/.local/bin:$PATH\"\nfi\n"
 
 if shell_file.exists():
     content = shell_file.read_text(encoding='utf-8')
-    content = content.replace(block, "\n")
+    content = content.replace(block1, "\n").replace(block2, "\n")
     shell_file.write_text(content, encoding='utf-8')
 PY
 
@@ -302,8 +303,8 @@ PY
 }
 
 uninstall_installation() {
-    log "Removing ArchPkg installation..."
-    rm -f "$BIN_DIR/$APP_NAME" "$DESKTOP_DIR/archpkg-helper.desktop"
+    log "Removing Arjax installation..."
+    rm -f "$BIN_DIR/$APP_NAME" "$DESKTOP_DIR/arjax.desktop" "$DESKTOP_DIR/archpkg-helper.desktop"
     rm -rf "$INSTALL_ROOT"
 
     remove_shell_path_block "$HOME/.profile" || true
@@ -311,15 +312,15 @@ uninstall_installation() {
     remove_shell_path_block "$HOME/.zshrc" || true
 
     if [ "$PURGE_CONFIG" = true ]; then
-        rm -rf "$HOME/.archpkg"
+        rm -rf "$HOME/.arjax" "$HOME/.archpkg"
     fi
 
-    log "ArchPkg uninstall complete."
+    log "Arjax uninstall complete."
     echo ""
     echo "If the app still appears in your desktop menu, log out and back in or refresh the application cache."
 }
 
-# Persist the launcher directory in common shell startup files so `archpkg` is available in new shells.
+# Persist the launcher directory in common shell startup files so `arjax` is available in new shells.
 ensure_shell_path() {
     local path_line='export PATH="$HOME/.local/bin:$PATH"'
     local shell_files=("$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc")
@@ -329,7 +330,7 @@ ensure_shell_path() {
             if ! grep -Fq "$path_line" "$shell_file" 2>/dev/null; then
                 {
                     echo ""
-                    echo "# archpkg-helper: make user-local commands available"
+                    echo "# arjax-helper: make user-local commands available"
                     echo "if [ -d \"\$HOME/.local/bin\" ]; then"
                     echo "    $path_line"
                     echo "fi"
@@ -376,11 +377,11 @@ install_desktop_entry() {
 
     mkdir -p "$DESKTOP_DIR"
 
-    cat > "$DESKTOP_DIR/archpkg-helper.desktop" <<EOF
+    cat > "$DESKTOP_DIR/arjax-helper.desktop" <<EOF
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=archpkg helper
+Name=Arjax
 GenericName=Package Manager
 Comment=Cross-distribution package manager with GUI
 Exec=$BIN_DIR/$APP_NAME gui
@@ -390,10 +391,10 @@ Terminal=false
 Categories=System;PackageManager;Settings;
 Keywords=package;install;update;software;pacman;apt;dnf;aur;flatpak;snap;
 StartupNotify=true
-StartupWMClass=archpkg-helper
+StartupWMClass=Arjax
 EOF
 
-    chmod +x "$DESKTOP_DIR/archpkg-helper.desktop"
+    chmod +x "$DESKTOP_DIR/arjax-helper.desktop"
 
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "$DESKTOP_DIR" >/dev/null 2>&1 || true
@@ -410,19 +411,19 @@ configure_arch_profile() {
     fi
 
     echo ""
-    log "Choose your archpkg profile:"
-    echo "    1) normal (recommended) - archpkg handles updates/news/trust checks automatically"
+    log "Choose your Arjax profile:"
+    echo "    1) normal (recommended) - Arjax handles updates/news/trust checks automatically"
     echo "    2) advanced - full manual control"
-    read -r -p "Enter choice [1/2] (default: 1): " ARCHPKG_PROFILE_CHOICE
+    read -r -p "Enter choice [1/2] (default: 1): " ARJAX_PROFILE_CHOICE
 
-    local archpkg_user_mode="normal"
-    if [ "${ARCHPKG_PROFILE_CHOICE:-1}" = "2" ]; then
-        archpkg_user_mode="advanced"
+    local arjax_user_mode="normal"
+    if [ "${ARJAX_PROFILE_CHOICE:-1}" = "2" ]; then
+        arjax_user_mode="advanced"
     fi
 
-    mkdir -p "$HOME/.archpkg"
-    if [ "$archpkg_user_mode" = "advanced" ]; then
-        cat > "$HOME/.archpkg/config.json" <<EOF
+    mkdir -p "$HOME/.arjax"
+    if [ "$arjax_user_mode" = "advanced" ]; then
+        cat > "$HOME/.arjax/config.json" <<EOF
 {
   "user_mode": "advanced",
   "auto_update_enabled": false,
@@ -437,7 +438,7 @@ configure_arch_profile() {
 }
 EOF
     else
-        cat > "$HOME/.archpkg/config.json" <<EOF
+        cat > "$HOME/.arjax/config.json" <<EOF
 {
   "user_mode": "normal",
   "auto_update_enabled": true,
@@ -453,16 +454,15 @@ EOF
 EOF
     fi
 
-    log "Profile configured: $archpkg_user_mode"
+    log "Profile configured: $arjax_user_mode"
 }
-
 main() {
     if [ "$UNINSTALL_MODE" = true ]; then
         uninstall_installation
         return 0
     fi
 
-    log "Starting universal installation of ArchPkg..."
+    log "Starting universal installation of Arjax..."
 
     ensure_python
     ensure_git
@@ -475,12 +475,12 @@ main() {
     install_desktop_entry
     configure_arch_profile "$(detect_distro_family)"
 
-    log "ArchPkg installation complete!"
+    log "Arjax installation complete!"
     echo ""
     echo "Quick start:"
-    echo "    archpkg --help       # Show all CLI commands"
-    echo "    archpkg gui          # Launch native desktop GUI"
-    echo "    archpkg search <pkg> # Search for packages"
+    echo "    arjax --help        # Show all CLI commands"
+    echo "    arjax gui           # Launch native desktop GUI"
+    echo "    arjax search <pkg>  # Search for packages"
     echo ""
     echo "Your shell startup files were updated so ~/.local/bin is available in new sessions."
     echo ""

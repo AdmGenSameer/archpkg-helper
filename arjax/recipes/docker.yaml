@@ -1,0 +1,10 @@
+name: docker
+description: Docker recipe for the provider-based installation engine
+aliases:
+  - docker-ce
+providers:
+  repository:
+    package: docker.io
+  vendor:
+    package: docker-ce
+    package_manager: apt

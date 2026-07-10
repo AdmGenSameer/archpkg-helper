@@ -1,14 +1,14 @@
 #!/bin/bash
 # service-manager.sh
-# Helper script to install and manage archpkg background monitor service
+# Helper script to install and manage arjax background monitor service
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 
-SERVICE_FILE="archpkg-monitor.service"
-TIMER_FILE="archpkg-monitor.timer"
+SERVICE_FILE="arjax-monitor.service"
+TIMER_FILE="arjax-monitor.timer"
 
 # Colors
 RED='\033[0;31m'
@@ -34,7 +34,7 @@ print_warning() {
 }
 
 install_service() {
-    print_info "Installing archpkg monitor service..."
+    print_info "Installing arjax monitor service..."
     
     # Create systemd user directory if it doesn't exist
     mkdir -p "$SYSTEMD_USER_DIR"
@@ -52,26 +52,26 @@ install_service() {
 }
 
 enable_service() {
-    print_info "Enabling archpkg monitor timer..."
+    print_info "Enabling arjax monitor timer..."
     
-    systemctl --user enable archpkg-monitor.timer
-    systemctl --user start archpkg-monitor.timer
+    systemctl --user enable arjax-monitor.timer
+    systemctl --user start arjax-monitor.timer
     
-    print_success "archpkg monitor timer enabled and started"
+    print_success "arjax monitor timer enabled and started"
     print_info "The monitor will run every 6 hours and 5 minutes after boot"
 }
 
 disable_service() {
-    print_info "Disabling archpkg monitor timer..."
+    print_info "Disabling arjax monitor timer..."
     
-    systemctl --user stop archpkg-monitor.timer 2>/dev/null || true
-    systemctl --user disable archpkg-monitor.timer 2>/dev/null || true
+    systemctl --user stop arjax-monitor.timer 2>/dev/null || true
+    systemctl --user disable arjax-monitor.timer 2>/dev/null || true
     
-    print_success "archpkg monitor timer stopped and disabled"
+    print_success "arjax monitor timer stopped and disabled"
 }
 
 uninstall_service() {
-    print_info "Uninstalling archpkg monitor service..."
+    print_info "Uninstalling arjax monitor service..."
     
     # Stop and disable first
     disable_service
@@ -87,31 +87,31 @@ uninstall_service() {
 }
 
 status_service() {
-    print_info "archpkg monitor timer status:"
-    systemctl --user status archpkg-monitor.timer --no-pager || true
+    print_info "arjax monitor timer status:"
+    systemctl --user status arjax-monitor.timer --no-pager || true
     
     echo ""
-    print_info "archpkg monitor service status:"
-    systemctl --user status archpkg-monitor.service --no-pager || true
+    print_info "arjax monitor service status:"
+    systemctl --user status arjax-monitor.service --no-pager || true
     
     echo ""
     print_info "Recent timer activations:"
-    systemctl --user list-timers archpkg-monitor.timer --no-pager || true
+    systemctl --user list-timers arjax-monitor.timer --no-pager || true
 }
 
 run_once() {
     print_info "Running monitor check once..."
-    python3 -m archpkg.monitor --once
+    python3 -m arjax.monitor --once
     print_success "Monitor check complete"
 }
 
 show_logs() {
     print_info "Recent monitor logs:"
-    journalctl --user -u archpkg-monitor.service -n 50 --no-pager
+    journalctl --user -u arjax-monitor.service -n 50 --no-pager
 }
 
 show_help() {
-    echo "archpkg monitor service manager"
+    echo "arjax monitor service manager"
     echo ""
     echo "Usage: $0 {install|enable|disable|uninstall|status|run-once|logs|help}"
     echo ""
