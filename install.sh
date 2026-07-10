@@ -12,6 +12,8 @@ SOURCE_SPEC="$REPO_ARCHIVE_URL"
 SUDO=""
 UNINSTALL_MODE=false
 PURGE_CONFIG=false
+INSTALL_DEPS=false
+YES_TO_ALL=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -20,6 +22,13 @@ for arg in "$@"; do
             ;;
         --purge)
             PURGE_CONFIG=true
+            ;;
+        --install-deps)
+            INSTALL_DEPS=true
+            ;;
+        --yes|-y)
+            YES_TO_ALL=true
+            INSTALL_DEPS=true
             ;;
     esac
 done
@@ -58,6 +67,126 @@ detect_distro_family() {
             echo "unknown"
             ;;
     esac
+}
+
+get_os_info() {
+    local distro_family
+    distro_family="$(detect_distro_family)"
+    local os_name="Unknown Linux"
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        os_name="${NAME:-${ID:-Unknown OS}}"
+        if [ -n "${VERSION_ID:-}" ]; then
+            os_name="$os_name $VERSION_ID"
+        fi
+    fi
+    echo "$os_name"
+}
+
+check_python_version() {
+    python3 -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" >/dev/null 2>&1
+}
+
+install_python_system_package() {
+    local family
+    family="$(detect_distro_family)"
+    init_sudo
+    case "$family" in
+        arch)
+            $SUDO pacman -Sy --noconfirm python python-pip >/dev/null 2>&1
+            ;;
+        debian)
+            $SUDO apt-get update -y >/dev/null 2>&1 || true
+            $SUDO apt-get install -y python3 python3-venv python3-pip >/dev/null 2>&1
+            ;;
+        fedora)
+            $SUDO dnf install -y python3 python3-pip python3-virtualenv >/dev/null 2>&1
+            ;;
+        suse)
+            $SUDO zypper install -y python3 python3-pip python3-virtualenv >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+install_git_package() {
+    local family="$1"
+    init_sudo
+    case "$family" in
+        arch)
+            $SUDO pacman -Sy --noconfirm git >/dev/null 2>&1
+            ;;
+        debian)
+            $SUDO apt-get update -y >/dev/null 2>&1 || true
+            $SUDO apt-get install -y git >/dev/null 2>&1
+            ;;
+        fedora)
+            $SUDO dnf install -y git >/dev/null 2>&1
+            ;;
+        suse)
+            $SUDO zypper install -y git >/dev/null 2>&1
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+request_dep_install() {
+    local dep_name="$1"
+    local install_cmds="$2"
+    local install_action="$3"
+    local extra_msg="$4"
+
+    local os_name
+    os_name="$(get_os_info)"
+
+    local do_install=false
+    if [ "$INSTALL_DEPS" = true ] || [ "$YES_TO_ALL" = true ]; then
+        do_install=true
+    else
+        echo ""
+        echo "$dep_name is required but is not installed."
+        echo "Detected OS: $os_name"
+        echo ""
+        read -r -p "Install $dep_name automatically? [Y/n]: " choice
+        case "$choice" in
+            [nN]|[nN][oO])
+                do_install=false
+                ;;
+            *)
+                do_install=true
+                ;;
+        esac
+    fi
+
+    if [ "$do_install" = true ]; then
+        log "Installing $dep_name..."
+        if eval "$install_action"; then
+            log "$dep_name installed successfully"
+            return 0
+        else
+            log "Failed to install $dep_name automatically"
+        fi
+    fi
+
+    # If we didn't install or installation failed:
+    echo ""
+    echo "[x] $dep_name was not found."
+    echo ""
+    if [ -n "$extra_msg" ]; then
+        echo -e "$extra_msg"
+        echo ""
+    fi
+    echo "Detected OS: $os_name"
+    echo ""
+    echo "You can install it manually with:"
+    echo -e "    $install_cmds"
+    echo ""
+    echo "Or rerun this installer with --install-deps to install missing dependencies automatically."
+    exit 1
 }
 
 # Use sudo only when we are not already root.
@@ -132,34 +261,48 @@ ensure_git() {
 
     local distro_family
     distro_family="$(detect_distro_family)"
-    init_sudo
-
-    log "git is missing, attempting to install it..."
+    
+    local display_cmds=""
     case "$distro_family" in
-        arch)
-            $SUDO pacman -Sy --noconfirm git >/dev/null 2>&1 || return 1
-            ;;
-        debian)
-            $SUDO apt-get update -y >/dev/null 2>&1 || true
-            $SUDO apt-get install -y git >/dev/null 2>&1 || return 1
-            ;;
-        fedora)
-            $SUDO dnf install -y git >/dev/null 2>&1 || return 1
-            ;;
-        suse)
-            $SUDO zypper install -y git >/dev/null 2>&1 || return 1
-            ;;
-        *)
-            return 1
-            ;;
+        arch) display_cmds="sudo pacman -S git" ;;
+        debian) display_cmds="sudo apt update\n    sudo apt install -y git" ;;
+        fedora) display_cmds="sudo dnf install -y git" ;;
+        suse) display_cmds="sudo zypper install -y git" ;;
+        *) display_cmds="Install git using your package manager" ;;
     esac
 
-    command -v git >/dev/null 2>&1
+    request_dep_install "git" "$display_cmds" "install_git_package $distro_family" "Arjax requires git to download/update recipes."
 }
 
 ensure_python() {
-    if ! command -v python3 >/dev/null 2>&1; then
-        die "python3 is required. Install Python with your system package manager and run this script again."
+    if command -v python3 >/dev/null 2>&1; then
+        if ! check_python_version; then
+            local current_ver
+            current_ver=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')")
+            local os_name
+            os_name="$(get_os_info)"
+            echo ""
+            echo "[x] Python version is too old: $current_ver"
+            echo ""
+            echo "Arjax requires Python 3.10 or newer."
+            echo ""
+            echo "Detected OS: $os_name"
+            echo ""
+            exit 1
+        fi
+    else
+        local distro_family
+        distro_family="$(detect_distro_family)"
+        local display_cmds=""
+        case "$distro_family" in
+            arch) display_cmds="sudo pacman -Sy python python-pip" ;;
+            debian) display_cmds="sudo apt update\n    sudo apt install -y python3 python3-venv python3-pip" ;;
+            fedora) display_cmds="sudo dnf install -y python3 python3-pip python3-virtualenv" ;;
+            suse) display_cmds="sudo zypper install -y python3 python3-pip python3-virtualenv" ;;
+            *) display_cmds="Install Python 3 using your package manager" ;;
+        esac
+
+        request_dep_install "Python 3" "$display_cmds" "install_python_system_package" "Arjax requires Python 3.10 or newer."
     fi
 
     if ! python3 -m pip --version >/dev/null 2>&1; then
@@ -167,23 +310,23 @@ ensure_python() {
         python3 -m ensurepip --upgrade >/dev/null 2>&1 || true
     fi
 
+    local family
+    family="$(detect_distro_family)"
+    local display_cmds=""
+    case "$family" in
+        arch) display_cmds="sudo pacman -Sy python-pip" ;;
+        debian) display_cmds="sudo apt update\n    sudo apt install -y python3-pip python3-venv" ;;
+        fedora) display_cmds="sudo dnf install -y python3-pip python3-virtualenv" ;;
+        suse) display_cmds="sudo zypper install -y python3-pip python3-virtualenv" ;;
+        *) display_cmds="Install python3-pip and python3-venv using your package manager" ;;
+    esac
+
     if ! python3 -m pip --version >/dev/null 2>&1; then
-        local distro_family
-        distro_family="$(detect_distro_family)"
-        init_sudo
-        log "ensurepip failed, trying system package manager for pip..."
-        if ! install_python_support "$distro_family"; then
-            die "pip is not available. Install python3-pip and python3-venv with your system package manager and rerun the installer."
-        fi
+        request_dep_install "Python pip support" "$display_cmds" "install_python_support $family" "Arjax requires pip to install dependencies."
     fi
 
     if ! python3 -m venv --help >/dev/null 2>&1; then
-        local distro_family
-        distro_family="$(detect_distro_family)"
-        init_sudo
-        if ! install_python_support "$distro_family"; then
-            die "python3-venv support is missing. Install your distro's Python venv package and rerun the installer."
-        fi
+        request_dep_install "Python venv support" "$display_cmds" "install_python_support $family" "Arjax requires venv to create a private environment."
     fi
 }
 
@@ -195,12 +338,17 @@ ensure_pipx() {
 
     local distro_family
     distro_family="$(detect_distro_family)"
-    init_sudo
+    
+    local display_cmds=""
+    case "$distro_family" in
+        arch) display_cmds="sudo pacman -S pipx" ;;
+        debian) display_cmds="sudo apt update\n    sudo apt install -y pipx" ;;
+        fedora) display_cmds="sudo dnf install -y pipx" ;;
+        suse) display_cmds="sudo zypper install -y pipx" ;;
+        *) display_cmds="Install pipx using your package manager" ;;
+    esac
 
-    log "pipx is missing, attempting to install it..."
-    if ! install_pipx_support "$distro_family"; then
-        die "pipx is not available. Install pipx with your system package manager and rerun the installer."
-    fi
+    request_dep_install "pipx" "$display_cmds" "install_pipx_support $distro_family" "Arjax requires pipx for its CLI components."
 
     if command -v pipx >/dev/null 2>&1; then
         pipx ensurepath >/dev/null 2>&1 || true
@@ -414,7 +562,13 @@ configure_arch_profile() {
     log "Choose your Arjax profile:"
     echo "    1) normal (recommended) - Arjax handles updates/news/trust checks automatically"
     echo "    2) advanced - full manual control"
-    read -r -p "Enter choice [1/2] (default: 1): " ARJAX_PROFILE_CHOICE
+    
+    local ARJAX_PROFILE_CHOICE="1"
+    if [ "$YES_TO_ALL" = true ]; then
+        log "Non-interactive mode: selecting normal profile"
+    else
+        read -r -p "Enter choice [1/2] (default: 1): " ARJAX_PROFILE_CHOICE
+    fi
 
     local arjax_user_mode="normal"
     if [ "${ARJAX_PROFILE_CHOICE:-1}" = "2" ]; then

@@ -717,75 +717,104 @@ def batch_install_packages(package_names: List[str]) -> None:
 def show_custom_help() -> None:
     """Display comprehensive custom help text."""
     help_text = """
-[bold cyan]🎯 Arjax - Universal Package Manager for All Linux Distros[/bold cyan]
+[bold cyan]🎯 Arjax v2.0.0[/bold cyan]
 
-[bold yellow]📦 What does it do?[/bold yellow]
-   Searches and installs packages across multiple sources:
-   ✓ Official repos (pacman, apt, dnf, zypper)
-   ✓ AUR (Arch User Repository)
-   ✓ Flatpak & Snap (works on any distro)
+Universal package discovery and installation for Linux.
+Search once. Install from the best available source.
 
-[bold yellow]🔍 SEARCH FOR PACKAGES[/bold yellow]
-   [cyan]arjax search <package-name>[/cyan]
-   [cyan]arjax <package-name>[/cyan]             [dim](search is default)[/dim]
-   
-   Examples:
-   [green]🔸 arjax firefox[/green]
-   [green]🔸 arjax visual studio code[/green]
-   [green]🔸 arjax search telegram[/green]
-   
-   Options:
-   [cyan]--aur[/cyan]              Prefer AUR packages over official repos
-   [cyan]--no-cache[/cyan]         Skip cache, search fresh results
-   [cyan]--limit, -l[/cyan]        Maximum results to show (default: 5)
+[bold yellow]🚀 Quick Start[/bold yellow]
+    [cyan]arjax search firefox[/cyan]
+    [cyan]arjax install firefox[/cyan]
+    [cyan]arjax suggest coding[/cyan]
 
-[bold yellow]📦 INSTALL SOFTWARE[/bold yellow]
+[bold yellow]💻 Commands[/bold yellow]
+    [cyan]search[/cyan]           Search for software
+    [cyan]install[/cyan]          Install software
+    [cyan]suggest[/cyan]          Discover apps by purpose
+    [cyan]update[/cyan]           Update tracked packages
+    [cyan]list-installed[/cyan]   Show installed packages
+    [cyan]web[/cyan]              Launch web interface
+    [cyan]upgrade[/cyan]          Upgrade Arjax
+    [cyan]uninstall[/cyan]        Remove Arjax
+
+[bold yellow]⚙️  Advanced Commands[/bold yellow]
+    [cyan]config[/cyan]           Manage configuration
+    [cyan]service[/cyan]          Background service
+
+[bold yellow]🔍 Search[/bold yellow]
+    Search only. No system modifications are performed.
+
+    [cyan]arjax search <query>[/cyan]
+
+    Examples:
+    [green]🔸 arjax search firefox[/green]
+    [green]🔸 arjax search visual studio code[/green]
+
+    Options:
+    [cyan]--aur[/cyan]              Prefer AUR packages over official repos
+    [cyan]--no-cache[/cyan]         Skip cache, search fresh results
+    [cyan]--limit, -l[/cyan]        Maximum results to show (default: 5)
+
+[bold yellow]📦 Install[/bold yellow]
+    Installs packages using the configured provider.
+
     [cyan]arjax install <package-name>[/cyan]
     [cyan]arjax install <package-name> --provider <name>[/cyan]
 
-    Providers:
-    [green]repository[/green], [green]vendor[/green], [green]github[/green], [green]flatpak[/green], [green]snap[/green], [green]appimage[/green]
+    Examples:
+    [green]🔸 arjax install vscode[/green]
+    [green]🔸 arjax install docker[/green]
 
-[bold yellow]💡 GET APP SUGGESTIONS BY PURPOSE[/bold yellow]
-   [cyan]arjax suggest <purpose>[/cyan]
-   
-   Examples:
-   [green]🔸 arjax suggest video editing[/green]
-   [green]🔸 arjax suggest coding[/green]
-   [green]🔸 arjax suggest gaming[/green]
-   
-   [cyan]--list[/cyan]             Show all available purposes
+[bold yellow]🔌 Provider Order[/bold yellow]
+    1. [green]repository[/green]   Native package manager (pacman, apt, dnf, zypper)
+    2. [green]vendor[/green]       Vendor package repository
+    3. [green]github[/green]       Direct GitHub release binary download
+    4. [green]flatpak[/green]      Flatpak package
+    5. [green]snap[/green]         Snap package
+    6. [green]appimage[/green]     AppImage format
 
-[bold yellow]🌐 WEB INTERFACE[/bold yellow]
-   [cyan]arjax web[/cyan]                        Launch web UI
-   [cyan]arjax web --port 8080[/cyan]            Use custom port
+    Arjax automatically chooses the first supported and available provider.
 
-[bold yellow]📦 PACKAGE TRACKING & UPDATES[/bold yellow]
-   [cyan]arjax list-installed[/cyan]             List tracked packages
-   [cyan]arjax update[/cyan]                     Install updates
-   [cyan]arjax update --check-only[/cyan]        Only check for updates
+[bold yellow]💡 Suggest[/bold yellow]
+    Discover applications matching a specific purpose.
 
-[bold yellow]⚙️  CONFIGURATION[/bold yellow]
-   [cyan]arjax config --list[/cyan]              Show all settings
-   [cyan]arjax config <key> <value>[/cyan]       Set a config value
+    [cyan]arjax suggest <purpose>[/cyan]
 
-[bold yellow]🔄 BACKGROUND SERVICE[/bold yellow]
-   [cyan]arjax service start|stop|status[/cyan]
+    Examples:
+    [green]🔸 arjax suggest photo editing[/green]
+    [green]🔸 arjax suggest coding[/green]
 
-[bold yellow]🔄 UPGRADE ARJAX[/bold yellow]
-   [cyan]arjax upgrade[/cyan]                    Get latest version from GitHub
+    Options:
+    [cyan]--list[/cyan]             Show all available purposes
 
-[bold yellow]🧹 UNINSTALL ARJAX[/bold yellow]
-    [cyan]arjax uninstall[/cyan]                  Remove launcher, desktop entry, and venv
-    [cyan]arjax uninstall --purge[/cyan]          Also remove saved config
+[bold yellow]🌐 Web Interface[/bold yellow]
+    [cyan]arjax web[/cyan]                  Launch local web UI
+    [cyan]--port[/cyan]                    Use custom port (default: 8000)
 
-[bold yellow]🌍 SUPPORTED DISTRIBUTIONS[/bold yellow]
-   [green]Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora,
-   openSUSE, + any distro with Flatpak/Snap support[/green]
+[bold yellow]🔄 Updates[/bold yellow]
+    [cyan]arjax update[/cyan]               Install updates for all tracked packages
+    [cyan]--check-only[/cyan]              Only check for updates, do not install
 
-[bold yellow]📚 MORE INFORMATION[/bold yellow]
-   Run [cyan]arjax <command> --help[/cyan] for detailed help on any command
-   Visit: [blue]https://github.com/AdmGenSameer/arjax[/blue]
+[bold yellow]🧹 Uninstall[/bold yellow]
+    [cyan]arjax uninstall[/cyan]            Remove launcher, desktop entry, and venv
+    [cyan]--purge[/cyan]                   Also remove saved configuration
+
+[bold yellow]🚩 Global Options[/bold yellow]
+    [cyan]--help, -h[/cyan]         Show this help message and exit
+    [cyan]--version[/cyan]          Show version information
+    [cyan]--verbose[/cyan]          Show verbose debug logs
+    [cyan]--no-color[/cyan]         Disable colored output
+    [cyan]--yes, -y[/cyan]          Assume yes to interactive prompts
+
+[bold yellow]🌍 Supported Distributions[/bold yellow]
+    [green]Arch, Manjaro, EndeavourOS, Ubuntu, Debian, Fedora,
+    openSUSE, + any distro with Flatpak/Snap support[/green]
+
+[bold yellow]📚 Documentation[/bold yellow]
+    https://github.com/AdmGenSameer/arjax
+
+[bold yellow]🐛 Report Issues[/bold yellow]
+    https://github.com/AdmGenSameer/arjax/issues
 """
     console.print(help_text)
 
